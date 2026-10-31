@@ -8,13 +8,16 @@
     "build": "tsc --noEmit && vite build && esbuild server/index.ts --bundle --packages=external --platform=node --format=esm --outfile=dist/server.js",
     "start": "NODE_ENV=production node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@clerk/express": "^2.1.86",
     "@clerk/react": "^6.18.4",
     "@clerk/shared": "^4.43.1",
+    "@clerk/testing": "^2.2.53",
     "@clerk/themes": "^2.4.57",
+    "@playwright/test": "^1.64.1",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.6",
     "@types/pg": "^8.23.1",

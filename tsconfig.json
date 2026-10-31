@@ -12,5 +12,5 @@
     "types": ["vite/client", "vitest/globals"],
     "noEmit": true
   },
-  "include": ["client/src", "server", "vite.config.ts", "tests"]
+  "include": ["client/src", "server", "vite.config.ts", "playwright.config.ts", "tests", "e2e"]
 }

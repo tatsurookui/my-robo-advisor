@@ -1,6 +1,10 @@
 node_modules/
 dist/
 coverage/
+test-results/
+playwright-report/
+playwright/.clerk/
+.cache/ms-playwright/
 .env
 .env.*
 !.env.example
