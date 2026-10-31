@@ -130,6 +130,8 @@ h1 { font-family: Manrope, sans-serif; font-size: clamp(39px, 5.1vw, 65px); line
 .form-field input:focus, .form-field select:focus, .form-field textarea:focus { border-color: #8179ee; box-shadow: 0 0 0 3px rgba(79, 70, 229, .12); }
 .form-field textarea { min-height: 108px; resize: vertical; }
 .form-field small { margin-left: 5px; color: #8a93a5; font-size: 11px; font-weight: 400; }
+.form-field .form-field__error { display: block; margin: 0; color: #a53b34; font-size: 12px; font-weight: 500; line-height: 1.4; }
+.form-field [aria-invalid="true"] { border-color: #c64e46; }
 .holding-form__notes { grid-column: 1 / -1; }
 .money-input { position: relative; }
 .money-input > span { position: absolute; top: 50%; left: 12px; color: #7a8496; font-size: 14px; transform: translateY(-50%); }

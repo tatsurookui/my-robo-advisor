@@ -1,6 +1,12 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useClerk, useUser } from "@clerk/react";
 import { Link, useLocation } from "wouter";
+import {
+  getHoldingFieldErrors,
+  holdingInputSchema,
+  type HoldingFieldErrors,
+  type HoldingFieldName,
+} from "../../shared/holdingValidation";
 
 interface AssetClass {
   id: number;
@@ -38,20 +44,47 @@ const emptyForm: HoldingFormValues = {
   notes: "",
 };
 
+interface ApiErrorResponse {
+  error?: string;
+  fieldErrors?: HoldingFieldErrors;
+}
+
+class ApiResponseError extends Error {
+  fieldErrors?: HoldingFieldErrors;
+
+  constructor(message: string, fieldErrors?: HoldingFieldErrors) {
+    super(message);
+    this.name = "ApiResponseError";
+    this.fieldErrors = fieldErrors;
+  }
+}
+
 async function requestJson<T>(
   url: string,
   options?: RequestInit,
 ): Promise<T> {
   const response = await fetch(url, options);
-  const result =
+  const result = (
     response.status === 204
       ? undefined
-      : await response.json().catch(() => null);
+      : await response.json().catch(() => null)
+  ) as ApiErrorResponse | null | undefined;
 
   if (!response.ok) {
-    throw new Error(result?.error ?? "The request could not be completed.");
+    throw new ApiResponseError(
+      result?.error ?? "The request could not be completed.",
+      result?.fieldErrors,
+    );
   }
   return result as T;
+}
+
+function FieldError({ id, message }: { id: string; message?: string }) {
+  return message ? (
+    <small className="form-field__error" id={id} role="alert">
+      {message}
+    </small>
+  ) : null;
 }
 
 function formatQuantity(quantity: string) {
@@ -368,6 +401,7 @@ function HoldingFormPage({
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<HoldingFieldErrors>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -423,14 +457,41 @@ function HoldingFormPage({
     field: keyof HoldingFormValues,
     value: string,
   ) {
-    setForm((current) => ({ ...current, [field]: value }));
+    const nextForm = { ...form, [field]: value };
+    setForm(nextForm);
+    setFieldErrors((currentErrors) => {
+      if (!currentErrors[field]) return currentErrors;
+      const validation = holdingInputSchema.safeParse(nextForm);
+      const nextErrors = validation.success
+        ? {}
+        : getHoldingFieldErrors(validation.error);
+      return { ...currentErrors, [field]: nextErrors[field] };
+    });
+  }
+
+  function validateField(field: HoldingFieldName) {
+    const validation = holdingInputSchema.safeParse(form);
+    const errors = validation.success
+      ? {}
+      : getHoldingFieldErrors(validation.error);
+    setFieldErrors((currentErrors) => ({
+      ...currentErrors,
+      [field]: errors[field],
+    }));
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isSaving) return;
-    setIsSaving(true);
     setError("");
+    const validation = holdingInputSchema.safeParse(form);
+    if (!validation.success) {
+      setFieldErrors(getHoldingFieldErrors(validation.error));
+      setError("Please correct the highlighted fields.");
+      return;
+    }
+    setFieldErrors({});
+    setIsSaving(true);
 
     try {
       const result = await requestJson<{ holding: Holding }>(
@@ -438,18 +499,14 @@ function HoldingFormPage({
         {
           method: holdingId ? "PUT" : "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ticker: form.ticker,
-            name: form.name,
-            asset_class_id: Number(form.asset_class_id),
-            quantity: form.quantity,
-            price: form.price,
-            notes: form.notes,
-          }),
+          body: JSON.stringify(validation.data),
         },
       );
       setLocation(`/holdings/${result.holding.id}`);
     } catch (requestError) {
+      if (requestError instanceof ApiResponseError && requestError.fieldErrors) {
+        setFieldErrors(requestError.fieldErrors);
+      }
       setError(
         requestError instanceof Error
           ? requestError.message
@@ -481,7 +538,7 @@ function HoldingFormPage({
         </div>
       )}
       {!isLoading && !error && assetClasses.length > 0 && (
-        <form className="holding-form" onSubmit={handleSubmit}>
+        <form className="holding-form" noValidate onSubmit={handleSubmit}>
           <div className="holding-form__grid">
             <label className="form-field" htmlFor="holding-ticker">
               <span>Ticker</span>
@@ -490,9 +547,13 @@ function HoldingFormPage({
                 name="ticker"
                 autoComplete="off"
                 required
+                aria-invalid={Boolean(fieldErrors.ticker)}
+                aria-describedby={fieldErrors.ticker ? "ticker-error" : undefined}
                 value={form.ticker}
                 onChange={(event) => updateField("ticker", event.target.value)}
+                onBlur={() => validateField("ticker")}
               />
+              <FieldError id="ticker-error" message={fieldErrors.ticker} />
             </label>
             <label className="form-field" htmlFor="holding-name">
               <span>Name</span>
@@ -500,9 +561,13 @@ function HoldingFormPage({
                 id="holding-name"
                 name="name"
                 required
+                aria-invalid={Boolean(fieldErrors.name)}
+                aria-describedby={fieldErrors.name ? "name-error" : undefined}
                 value={form.name}
                 onChange={(event) => updateField("name", event.target.value)}
+                onBlur={() => validateField("name")}
               />
+              <FieldError id="name-error" message={fieldErrors.name} />
             </label>
             <label className="form-field" htmlFor="holding-asset-class">
               <span>Asset class</span>
@@ -510,10 +575,15 @@ function HoldingFormPage({
                 id="holding-asset-class"
                 name="asset_class_id"
                 required
+                aria-invalid={Boolean(fieldErrors.asset_class_id)}
+                aria-describedby={
+                  fieldErrors.asset_class_id ? "asset-class-error" : undefined
+                }
                 value={form.asset_class_id}
                 onChange={(event) =>
                   updateField("asset_class_id", event.target.value)
                 }
+                onBlur={() => validateField("asset_class_id")}
               >
                 {assetClasses.map((assetClass) => (
                   <option key={assetClass.id} value={assetClass.id}>
@@ -521,6 +591,10 @@ function HoldingFormPage({
                   </option>
                 ))}
               </select>
+              <FieldError
+                id="asset-class-error"
+                message={fieldErrors.asset_class_id}
+              />
             </label>
             <label className="form-field" htmlFor="holding-quantity">
               <span>Quantity</span>
@@ -531,11 +605,15 @@ function HoldingFormPage({
                 min="0.00000001"
                 step="any"
                 required
+                aria-invalid={Boolean(fieldErrors.quantity)}
+                aria-describedby={fieldErrors.quantity ? "quantity-error" : undefined}
                 value={form.quantity}
                 onChange={(event) =>
                   updateField("quantity", event.target.value)
                 }
+                onBlur={() => validateField("quantity")}
               />
+              <FieldError id="quantity-error" message={fieldErrors.quantity} />
             </label>
             <label className="form-field" htmlFor="holding-price">
               <span>Price per share</span>
@@ -548,10 +626,14 @@ function HoldingFormPage({
                   min="0"
                   step="any"
                   required
+                  aria-invalid={Boolean(fieldErrors.price)}
+                  aria-describedby={fieldErrors.price ? "price-error" : undefined}
                   value={form.price}
                   onChange={(event) => updateField("price", event.target.value)}
+                  onBlur={() => validateField("price")}
                 />
               </div>
+              <FieldError id="price-error" message={fieldErrors.price} />
             </label>
             <label
               className="form-field holding-form__notes"
@@ -562,9 +644,13 @@ function HoldingFormPage({
                 id="holding-notes"
                 name="notes"
                 rows={4}
+                aria-invalid={Boolean(fieldErrors.notes)}
+                aria-describedby={fieldErrors.notes ? "notes-error" : undefined}
                 value={form.notes}
                 onChange={(event) => updateField("notes", event.target.value)}
+                onBlur={() => validateField("notes")}
               />
+              <FieldError id="notes-error" message={fieldErrors.notes} />
             </label>
           </div>
           <div className="holding-form__actions">

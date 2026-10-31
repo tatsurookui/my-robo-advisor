@@ -17,8 +17,8 @@ import {
   listAssetClasses,
   listHoldings,
   updateHolding,
-  type HoldingInput,
 } from "./holdingStore";
+import { validateHoldingInput } from "./holdingValidation";
 import { upsertUserRecord } from "./userStore";
 
 const app = express();
@@ -87,67 +87,24 @@ function requireSignedInUser(req: Request, res: Response): string | null {
   return userId;
 }
 
-function parseHoldingInput(body: unknown): HoldingInput | null {
-  if (typeof body !== "object" || body === null || Array.isArray(body)) {
-    return null;
-  }
-
-  const values = body as Record<string, unknown>;
-  const ticker = typeof values.ticker === "string" ? values.ticker.trim() : "";
-  const name = typeof values.name === "string" ? values.name.trim() : "";
-  const assetClassId = Number(values.asset_class_id);
-  const parseDecimal = (value: unknown): string | null => {
-    const decimal =
-      typeof value === "string"
-        ? value.trim()
-        : typeof value === "number" && Number.isFinite(value)
-          ? String(value)
-          : "";
-
-    if (!/^\d+(?:\.\d+)?$/.test(decimal) || !Number.isFinite(Number(decimal))) {
-      return null;
-    }
-    return decimal;
-  };
-  const quantity = parseDecimal(values.quantity);
-  const price = parseDecimal(values.price);
-  const notes =
-    values.notes === undefined || values.notes === null
-      ? null
-      : typeof values.notes === "string"
-        ? values.notes.trim() || null
-        : undefined;
-
-  if (
-    !ticker ||
-    !name ||
-    !Number.isSafeInteger(assetClassId) ||
-    assetClassId < 1 ||
-    quantity === null ||
-    Number(quantity) <= 0 ||
-    price === null ||
-    Number(price) < 0 ||
-    notes === undefined
-  ) {
-    return null;
-  }
-
-  return {
-    ticker,
-    name,
-    assetClassId,
-    quantity,
-    price,
-    notes,
-  };
-}
-
 function respondToHoldingError(res: Response, error: unknown) {
   const code =
     typeof error === "object" && error !== null && "code" in error
       ? String(error.code)
       : "";
-  if (["22P02", "22003", "23502", "23503", "23514"].includes(code)) {
+  const constraint =
+    typeof error === "object" && error !== null && "constraint" in error
+      ? String(error.constraint)
+      : "";
+  if (code === "23503" && constraint.includes("asset_class_id")) {
+    const message = "Select an available asset class.";
+    res.status(400).json({
+      error: message,
+      fieldErrors: { asset_class_id: message },
+    });
+    return;
+  }
+  if (["22P02", "22003", "23502", "23514"].includes(code)) {
     res.status(400).json({ error: "Check the holding details and asset class." });
     return;
   }
@@ -200,14 +157,17 @@ app.get("/api/holdings/:id", async (req, res) => {
 app.post("/api/holdings", async (req, res) => {
   const userId = requireSignedInUser(req, res);
   if (!userId) return;
-  const holdingInput = parseHoldingInput(req.body);
-  if (!holdingInput) {
-    res.status(400).json({ error: "Check the holding details and asset class." });
+  const validation = validateHoldingInput(req.body);
+  if (!validation.success) {
+    res.status(400).json({
+      error: "Correct the highlighted holding fields.",
+      fieldErrors: validation.fieldErrors,
+    });
     return;
   }
 
   try {
-    const holding = await createHolding(pool, userId, holdingInput);
+    const holding = await createHolding(pool, userId, validation.input);
     res.status(201).json({ holding });
   } catch (error) {
     respondToHoldingError(res, error);
@@ -221,9 +181,12 @@ app.put("/api/holdings/:id", async (req, res) => {
     res.status(404).json({ error: "Holding not found." });
     return;
   }
-  const holdingInput = parseHoldingInput(req.body);
-  if (!holdingInput) {
-    res.status(400).json({ error: "Check the holding details and asset class." });
+  const validation = validateHoldingInput(req.body);
+  if (!validation.success) {
+    res.status(400).json({
+      error: "Correct the highlighted holding fields.",
+      fieldErrors: validation.fieldErrors,
+    });
     return;
   }
 
@@ -232,7 +195,7 @@ app.put("/api/holdings/:id", async (req, res) => {
       pool,
       userId,
       req.params.id,
-      holdingInput,
+      validation.input,
     );
     if (!holding) {
       res.status(404).json({ error: "Holding not found." });
