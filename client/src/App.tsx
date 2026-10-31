@@ -1,15 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import {
   ClerkProvider,
   SignIn,
   SignUp,
   useAuth,
-  useClerk,
-  useUser,
 } from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
 import { Link, Route, Router, Switch, useLocation } from "wouter";
+import HoldingsApp from "./HoldingsApp";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 const clerkPubKey = publishableKeyFromHost(
@@ -167,73 +166,29 @@ function LandingPage() {
   );
 }
 
-function AccountPage() {
-  const { user, isLoaded } = useUser();
-  const { signOut } = useClerk();
-  const [syncState, setSyncState] = useState<"loading" | "ready" | "error">("loading");
-
-  useEffect(() => {
-    if (!isLoaded || !user) return;
-
-    let cancelled = false;
-    fetch("/api/auth/sync", { method: "POST" })
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error("Unable to save your account.");
-        }
-        if (!cancelled) setSyncState("ready");
-      })
-      .catch(() => {
-        if (!cancelled) setSyncState("error");
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isLoaded, user?.id]);
-
-  if (!isLoaded || !user) {
-    return <main className="loading-screen">Loading your secure account…</main>;
-  }
-
-  return (
-    <main className="account-page">
-      <header className="topbar">
-        <BrandMark />
-        <button
-          className="button button--quiet"
-          onClick={() => signOut({ redirectUrl: basePath || "/" })}
-          type="button"
-        >
-          Log out
-        </button>
-      </header>
-      <section className="account-card">
-        <div className="account-card__icon">✓</div>
-        <div className="eyebrow">ACCOUNT SECURED</div>
-        <h1>Welcome to your investing space.</h1>
-        <p className="account-card__email">{user.primaryEmailAddress?.emailAddress}</p>
-        <div className={`sync-status sync-status--${syncState}`} role="status">
-          {syncState === "loading" && "Saving your account…"}
-          {syncState === "ready" && "Your account is ready."}
-          {syncState === "error" && "We couldn’t save your account. Refresh to try again."}
-        </div>
-        <p className="account-card__note">
-          Your personal portfolio tools will be ready here as they’re added.
-        </p>
-      </section>
-    </main>
-  );
-}
-
 function HomeRoute() {
   const { isLoaded, isSignedIn } = useAuth();
+  const [location, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (isLoaded && !isSignedIn && location !== "/") {
+      setLocation("/sign-in");
+    }
+  }, [isLoaded, isSignedIn, location, setLocation]);
 
   if (!isLoaded) {
     return <main className="loading-screen">Loading secure sign-in…</main>;
   }
 
-  return isSignedIn ? <AccountPage /> : <LandingPage />;
+  if (!isSignedIn) {
+    return location === "/" ? (
+      <LandingPage />
+    ) : (
+      <main className="loading-screen">Redirecting to secure sign-in…</main>
+    );
+  }
+
+  return <HoldingsApp />;
 }
 
 function AuthRoutes() {
