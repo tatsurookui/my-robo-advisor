@@ -1,15 +1,15 @@
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import type { DashboardAllocation } from "../../shared/dashboard";
+import type { DashboardChartAllocation } from "../../shared/dashboard";
 
 export default function DashboardChart({
   allocations,
-  formatCurrency,
+  formatValue,
 }: {
-  allocations: DashboardAllocation[];
-  formatCurrency: (value: number) => string;
+  allocations: DashboardChartAllocation[];
+  formatValue: (value: number) => string;
 }) {
   const chartAllocations = allocations.filter(
-    (allocation) => allocation.marketValue > 0,
+    (allocation) => allocation.value > 0,
   );
 
   return (
@@ -17,7 +17,7 @@ export default function DashboardChart({
       <PieChart>
         <Pie
           data={chartAllocations}
-          dataKey="marketValue"
+          dataKey="value"
           nameKey="assetClassName"
           innerRadius="59%"
           outerRadius="86%"
@@ -30,7 +30,7 @@ export default function DashboardChart({
           ))}
         </Pie>
         <Tooltip
-          formatter={(value) => formatCurrency(Number(value ?? 0))}
+          formatter={(value) => formatValue(Number(value ?? 0))}
         />
       </PieChart>
     </ResponsiveContainer>
