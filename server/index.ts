@@ -19,6 +19,8 @@ import {
   listStarredHoldings,
   setHoldingStarred,
   updateHolding,
+  type HoldingListFilters,
+  type HoldingSort,
 } from "./holdingStore";
 import { validateHoldingInput } from "./holdingValidation";
 import { upsertUserRecord } from "./userStore";
@@ -89,6 +91,41 @@ function requireSignedInUser(req: Request, res: Response): string | null {
   return userId;
 }
 
+const HOLDING_SORTS = new Set<HoldingSort>([
+  "market-value",
+  "ticker",
+  "newest",
+]);
+
+function parseHoldingListFilters(
+  query: Request["query"],
+): HoldingListFilters | null {
+  let search: string | undefined;
+  if (query.search !== undefined) {
+    if (typeof query.search !== "string" || query.search.length > 100) {
+      return null;
+    }
+    search = query.search.trim();
+  }
+
+  let assetClassId: number | undefined;
+  if (query.assetClassId !== undefined && query.assetClassId !== "") {
+    if (typeof query.assetClassId !== "string") return null;
+    assetClassId = Number(query.assetClassId);
+    if (!Number.isSafeInteger(assetClassId) || assetClassId < 1) return null;
+  }
+
+  let sort: HoldingSort = "newest";
+  if (query.sort !== undefined) {
+    if (typeof query.sort !== "string" || !HOLDING_SORTS.has(query.sort as HoldingSort)) {
+      return null;
+    }
+    sort = query.sort as HoldingSort;
+  }
+
+  return { search, assetClassId, sort };
+}
+
 function respondToHoldingError(res: Response, error: unknown) {
   const code =
     typeof error === "object" && error !== null && "code" in error
@@ -128,9 +165,14 @@ app.get("/api/asset-classes", async (req, res) => {
 app.get("/api/holdings", async (req, res) => {
   const userId = requireSignedInUser(req, res);
   if (!userId) return;
+  const filters = parseHoldingListFilters(req.query);
+  if (!filters) {
+    res.status(400).json({ error: "Search, asset class, or sort option is invalid." });
+    return;
+  }
 
   try {
-    res.json({ holdings: await listHoldings(pool, userId) });
+    res.json({ holdings: await listHoldings(pool, userId, filters) });
   } catch (error) {
     respondToHoldingError(res, error);
   }
@@ -139,9 +181,14 @@ app.get("/api/holdings", async (req, res) => {
 app.get("/api/holdings/starred", async (req, res) => {
   const userId = requireSignedInUser(req, res);
   if (!userId) return;
+  const filters = parseHoldingListFilters(req.query);
+  if (!filters) {
+    res.status(400).json({ error: "Search, asset class, or sort option is invalid." });
+    return;
+  }
 
   try {
-    res.json({ holdings: await listStarredHoldings(pool, userId) });
+    res.json({ holdings: await listStarredHoldings(pool, userId, filters) });
   } catch (error) {
     respondToHoldingError(res, error);
   }

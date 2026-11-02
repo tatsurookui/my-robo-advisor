@@ -31,6 +31,14 @@ export interface HoldingInput {
   notes: string | null;
 }
 
+export type HoldingSort = "market-value" | "ticker" | "newest";
+
+export interface HoldingListFilters {
+  search?: string;
+  assetClassId?: number;
+  sort?: HoldingSort;
+}
+
 type Queryable = Pick<Pool, "query">;
 
 const HOLDING_SELECT = `
@@ -51,15 +59,59 @@ const HOLDING_SELECT = `
   LEFT JOIN stars AS s ON s.user_id = $1 AND s.asset_id = a.id
 `;
 
+const HOLDING_SORT_SQL: Record<HoldingSort, string> = {
+  "market-value": "a.quantity * a.price DESC",
+  ticker: "LOWER(a.ticker) ASC, a.ticker ASC",
+  newest: "a.created_at DESC",
+};
+
+function buildHoldingListQuery(
+  filters: HoldingListFilters,
+  starredOnly: boolean,
+) {
+  const values: (string | number)[] = [];
+  const conditions = ["a.user_id = $1"];
+
+  if (filters.search?.trim()) {
+    const escapedSearch = filters.search
+      .trim()
+      .replace(/[!%_]/g, (character) => `!${character}`);
+    values.push(`%${escapedSearch}%`);
+    const parameter = `$${values.length + 1}`;
+    conditions.push(
+      `(a.ticker ILIKE ${parameter} ESCAPE '!' OR a.name ILIKE ${parameter} ESCAPE '!')`,
+    );
+  }
+
+  if (filters.assetClassId !== undefined) {
+    values.push(filters.assetClassId);
+    conditions.push(`a.asset_class_id = $${values.length + 1}`);
+  }
+
+  if (starredOnly) {
+    conditions.push("s.asset_id IS NOT NULL");
+  }
+
+  const sort = filters.sort ?? "newest";
+  const orderBy = HOLDING_SORT_SQL[sort] ?? HOLDING_SORT_SQL.newest;
+
+  return {
+    text: `${HOLDING_SELECT}
+     WHERE ${conditions.join(" AND ")}
+     ORDER BY ${orderBy}, a.id`,
+    values,
+  };
+}
+
 export async function listHoldings(
   database: Queryable,
   userId: string,
+  filters: HoldingListFilters = {},
 ): Promise<HoldingRecord[]> {
+  const query = buildHoldingListQuery(filters, false);
   const { rows } = await database.query<HoldingRecord>(
-    `${HOLDING_SELECT}
-     WHERE a.user_id = $1
-     ORDER BY a.created_at DESC, a.id`,
-    [userId],
+    query.text,
+    [userId, ...query.values],
   );
   return rows;
 }
@@ -67,12 +119,12 @@ export async function listHoldings(
 export async function listStarredHoldings(
   database: Queryable,
   userId: string,
+  filters: HoldingListFilters = {},
 ): Promise<HoldingRecord[]> {
+  const query = buildHoldingListQuery(filters, true);
   const { rows } = await database.query<HoldingRecord>(
-    `${HOLDING_SELECT}
-     WHERE a.user_id = $1 AND s.asset_id IS NOT NULL
-     ORDER BY a.created_at DESC, a.id`,
-    [userId],
+    query.text,
+    [userId, ...query.values],
   );
   return rows;
 }
