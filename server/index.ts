@@ -16,6 +16,8 @@ import {
   getHolding,
   listAssetClasses,
   listHoldings,
+  listStarredHoldings,
+  setHoldingStarred,
   updateHolding,
 } from "./holdingStore";
 import { validateHoldingInput } from "./holdingValidation";
@@ -134,6 +136,17 @@ app.get("/api/holdings", async (req, res) => {
   }
 });
 
+app.get("/api/holdings/starred", async (req, res) => {
+  const userId = requireSignedInUser(req, res);
+  if (!userId) return;
+
+  try {
+    res.json({ holdings: await listStarredHoldings(pool, userId) });
+  } catch (error) {
+    respondToHoldingError(res, error);
+  }
+});
+
 app.get("/api/holdings/:id", async (req, res) => {
   const userId = requireSignedInUser(req, res);
   if (!userId) return;
@@ -202,6 +215,56 @@ app.put("/api/holdings/:id", async (req, res) => {
       return;
     }
     res.json({ holding });
+  } catch (error) {
+    respondToHoldingError(res, error);
+  }
+});
+
+app.put("/api/holdings/:id/star", async (req, res) => {
+  const userId = requireSignedInUser(req, res);
+  if (!userId) return;
+  if (!UUID_PATTERN.test(req.params.id)) {
+    res.status(404).json({ error: "Holding not found." });
+    return;
+  }
+
+  try {
+    const updated = await setHoldingStarred(
+      pool,
+      userId,
+      req.params.id,
+      true,
+    );
+    if (!updated) {
+      res.status(404).json({ error: "Holding not found." });
+      return;
+    }
+    res.json({ is_starred: true });
+  } catch (error) {
+    respondToHoldingError(res, error);
+  }
+});
+
+app.delete("/api/holdings/:id/star", async (req, res) => {
+  const userId = requireSignedInUser(req, res);
+  if (!userId) return;
+  if (!UUID_PATTERN.test(req.params.id)) {
+    res.status(404).json({ error: "Holding not found." });
+    return;
+  }
+
+  try {
+    const updated = await setHoldingStarred(
+      pool,
+      userId,
+      req.params.id,
+      false,
+    );
+    if (!updated) {
+      res.status(404).json({ error: "Holding not found." });
+      return;
+    }
+    res.json({ is_starred: false });
   } catch (error) {
     respondToHoldingError(res, error);
   }

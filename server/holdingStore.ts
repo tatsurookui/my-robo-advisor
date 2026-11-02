@@ -17,6 +17,7 @@ export interface HoldingRecord {
   quantity: string;
   price: string;
   notes: string | null;
+  is_starred: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -42,10 +43,12 @@ const HOLDING_SELECT = `
     a.quantity,
     a.price,
     a.notes,
+    s.asset_id IS NOT NULL AS is_starred,
     a.created_at,
     a.updated_at
   FROM assets AS a
   JOIN asset_classes AS ac ON ac.id = a.asset_class_id
+  LEFT JOIN stars AS s ON s.user_id = $1 AND s.asset_id = a.id
 `;
 
 export async function listHoldings(
@@ -55,6 +58,19 @@ export async function listHoldings(
   const { rows } = await database.query<HoldingRecord>(
     `${HOLDING_SELECT}
      WHERE a.user_id = $1
+     ORDER BY a.created_at DESC, a.id`,
+    [userId],
+  );
+  return rows;
+}
+
+export async function listStarredHoldings(
+  database: Queryable,
+  userId: string,
+): Promise<HoldingRecord[]> {
+  const { rows } = await database.query<HoldingRecord>(
+    `${HOLDING_SELECT}
+     WHERE a.user_id = $1 AND s.asset_id IS NOT NULL
      ORDER BY a.created_at DESC, a.id`,
     [userId],
   );
@@ -102,10 +118,12 @@ export async function createHolding(
        saved.quantity,
        saved.price,
        saved.notes,
+        s.asset_id IS NOT NULL AS is_starred,
        saved.created_at,
        saved.updated_at
      FROM saved
-     JOIN asset_classes AS ac ON ac.id = saved.asset_class_id`,
+      JOIN asset_classes AS ac ON ac.id = saved.asset_class_id
+      LEFT JOIN stars AS s ON s.user_id = $1 AND s.asset_id = saved.id`,
     [
       userId,
       holding.assetClassId,
@@ -153,10 +171,12 @@ export async function updateHolding(
        saved.quantity,
        saved.price,
        saved.notes,
+        s.asset_id IS NOT NULL AS is_starred,
        saved.created_at,
        saved.updated_at
      FROM saved
-     JOIN asset_classes AS ac ON ac.id = saved.asset_class_id`,
+      JOIN asset_classes AS ac ON ac.id = saved.asset_class_id
+      LEFT JOIN stars AS s ON s.user_id = $1 AND s.asset_id = saved.id`,
     [
       userId,
       holdingId,
@@ -181,6 +201,49 @@ export async function deleteHolding(
     [userId, holdingId],
   );
   return (result.rowCount ?? 0) > 0;
+}
+
+export async function setHoldingStarred(
+  database: Queryable,
+  userId: string,
+  holdingId: string,
+  starred: boolean,
+): Promise<boolean> {
+  const query = starred
+    ? `WITH owned_holding AS (
+         SELECT id
+         FROM assets
+         WHERE user_id = $1 AND id = $2
+       ),
+       inserted AS (
+         INSERT INTO stars (user_id, asset_id)
+         SELECT $1, owned_holding.id
+         FROM owned_holding
+         ON CONFLICT (user_id, asset_id) DO NOTHING
+         RETURNING asset_id
+       )
+       SELECT owned_holding.id
+       FROM owned_holding
+       LEFT JOIN inserted ON inserted.asset_id = owned_holding.id`
+    : `WITH owned_holding AS (
+         SELECT id
+         FROM assets
+         WHERE user_id = $1 AND id = $2
+       ),
+       removed AS (
+         DELETE FROM stars AS s
+         USING owned_holding
+         WHERE s.user_id = $1 AND s.asset_id = owned_holding.id
+         RETURNING s.asset_id
+       )
+       SELECT owned_holding.id
+       FROM owned_holding
+       LEFT JOIN removed ON removed.asset_id = owned_holding.id`;
+  const { rows } = await database.query<{ id: string }>(query, [
+    userId,
+    holdingId,
+  ]);
+  return rows.length > 0;
 }
 
 export async function listAssetClasses(
