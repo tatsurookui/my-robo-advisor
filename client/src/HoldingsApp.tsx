@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useClerk, useUser } from "@clerk/react";
 import { Link, useLocation } from "wouter";
 import DashboardPage from "./DashboardPage";
+import RiskQuizPage from "./RiskQuizPage";
 import {
   getHoldingFieldErrors,
   holdingInputSchema,
@@ -179,9 +180,11 @@ function BrandLink() {
 function HoldingsLayout({
   children,
   dashboard = false,
+  activePage = "dashboard",
 }: {
   children: ReactNode;
   dashboard?: boolean;
+  activePage?: "dashboard" | "risk-quiz";
 }) {
   const { user } = useUser();
   const { signOut } = useClerk();
@@ -201,6 +204,9 @@ function HoldingsLayout({
               </Link>
               <Link href="/holdings/starred" className="holdings-nav__link">
                 Starred
+              </Link>
+              <Link href="/risk-quiz" className="holdings-nav__link">
+                Risk Quiz
               </Link>
               <Link href="/holdings/new" className="button button--small">
                 Add holding
@@ -223,7 +229,10 @@ function HoldingsLayout({
         <div className="dashboard-shell">
           <aside className="dashboard-sidebar">
             <nav aria-label="Portfolio navigation">
-              <Link href="/dashboard" aria-current="page">
+              <Link
+                href="/dashboard"
+                aria-current={activePage === "dashboard" ? "page" : undefined}
+              >
                 <span aria-hidden="true">◷</span> Dashboard
               </Link>
               <Link href="/holdings">
@@ -231,6 +240,12 @@ function HoldingsLayout({
               </Link>
               <Link href="/holdings/starred">
                 <span aria-hidden="true">☆</span> Starred
+              </Link>
+              <Link
+                href="/risk-quiz"
+                aria-current={activePage === "risk-quiz" ? "page" : undefined}
+              >
+                <span aria-hidden="true">◈</span> Risk Quiz
               </Link>
             </nav>
           </aside>
@@ -1011,10 +1026,13 @@ export default function HoldingsApp() {
     location === "/" ||
     location === "/dashboard" ||
     location === "/dashboard/";
+  const isRiskQuizRoute = location === "/risk-quiz" || location === "/risk-quiz/";
 
   let page;
   if (isDashboardRoute) {
     page = <DashboardPage />;
+  } else if (isRiskQuizRoute) {
+    page = <RiskQuizPage />;
   } else if (location === "/holdings/starred" || location === "/holdings/starred/") {
     page = <HoldingsListPage starredOnly />;
   } else if (location === "/holdings" || location === "/holdings/") {
@@ -1036,5 +1054,12 @@ export default function HoldingsApp() {
     );
   }
 
-  return <HoldingsLayout dashboard={isDashboardRoute}>{page}</HoldingsLayout>;
+  return (
+    <HoldingsLayout
+      dashboard={isDashboardRoute || isRiskQuizRoute}
+      activePage={isRiskQuizRoute ? "risk-quiz" : "dashboard"}
+    >
+      {page}
+    </HoldingsLayout>
+  );
 }
