@@ -22,6 +22,7 @@ import {
   type HoldingListFilters,
   type HoldingSort,
 } from "./holdingStore";
+import { getDashboardSummary } from "./dashboardStore";
 import { validateHoldingInput } from "./holdingValidation";
 import { upsertUserRecord } from "./userStore";
 
@@ -157,6 +158,17 @@ app.get("/api/asset-classes", async (req, res) => {
 
   try {
     res.json({ assetClasses: await listAssetClasses(pool) });
+  } catch (error) {
+    respondToHoldingError(res, error);
+  }
+});
+
+app.get("/api/dashboard", async (req, res) => {
+  const userId = requireSignedInUser(req, res);
+  if (!userId) return;
+
+  try {
+    res.json({ dashboard: await getDashboardSummary(pool, userId) });
   } catch (error) {
     respondToHoldingError(res, error);
   }
