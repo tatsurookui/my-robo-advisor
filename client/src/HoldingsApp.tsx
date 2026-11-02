@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useClerk, useUser } from "@clerk/react";
 import { Link, useLocation } from "wouter";
+import DashboardPage from "./DashboardPage";
 import {
   getHoldingFieldErrors,
   holdingInputSchema,
@@ -175,24 +176,37 @@ function BrandLink() {
   );
 }
 
-function HoldingsLayout({ children }: { children: ReactNode }) {
+function HoldingsLayout({
+  children,
+  dashboard = false,
+}: {
+  children: ReactNode;
+  dashboard?: boolean;
+}) {
   const { user } = useUser();
   const { signOut } = useClerk();
 
   return (
-    <main className="holdings-app">
+    <main className={`holdings-app${dashboard ? " holdings-app--dashboard" : ""}`}>
       <header className="topbar holdings-topbar">
         <BrandLink />
-        <nav className="holdings-nav" aria-label="Portfolio">
-          <Link href="/holdings" className="holdings-nav__link">
-            Holdings
-          </Link>
-          <Link href="/holdings/starred" className="holdings-nav__link">
-            Starred
-          </Link>
-          <Link href="/holdings/new" className="button button--small">
-            Add holding
-          </Link>
+        <div className="holdings-nav">
+          {!dashboard && (
+            <>
+              <Link href="/dashboard" className="holdings-nav__link">
+                Dashboard
+              </Link>
+              <Link href="/holdings" className="holdings-nav__link">
+                Holdings
+              </Link>
+              <Link href="/holdings/starred" className="holdings-nav__link">
+                Starred
+              </Link>
+              <Link href="/holdings/new" className="button button--small">
+                Add holding
+              </Link>
+            </>
+          )}
           <span className="holdings-nav__email">
             {user?.primaryEmailAddress?.emailAddress}
           </span>
@@ -203,9 +217,26 @@ function HoldingsLayout({ children }: { children: ReactNode }) {
           >
             Log out
           </button>
-        </nav>
+        </div>
       </header>
-      {children}
+      {dashboard ? (
+        <div className="dashboard-shell">
+          <aside className="dashboard-sidebar">
+            <nav aria-label="Portfolio navigation">
+              <Link href="/dashboard" aria-current="page">
+                <span aria-hidden="true">◷</span> Dashboard
+              </Link>
+              <Link href="/holdings">
+                <span aria-hidden="true">▤</span> Holdings
+              </Link>
+              <Link href="/holdings/starred">
+                <span aria-hidden="true">☆</span> Starred
+              </Link>
+            </nav>
+          </aside>
+          <div className="dashboard-shell__content">{children}</div>
+        </div>
+      ) : children}
     </main>
   );
 }
@@ -976,11 +1007,17 @@ export default function HoldingsApp() {
 
   const editMatch = location.match(/^\/holdings\/([^/]+)\/edit\/?$/);
   const detailMatch = location.match(/^\/holdings\/([^/]+)\/?$/);
+  const isDashboardRoute =
+    location === "/" ||
+    location === "/dashboard" ||
+    location === "/dashboard/";
 
   let page;
-  if (location === "/holdings/starred" || location === "/holdings/starred/") {
+  if (isDashboardRoute) {
+    page = <DashboardPage />;
+  } else if (location === "/holdings/starred" || location === "/holdings/starred/") {
     page = <HoldingsListPage starredOnly />;
-  } else if (location === "/" || location === "/holdings" || location === "/holdings/") {
+  } else if (location === "/holdings" || location === "/holdings/") {
     page = <HoldingsListPage />;
   } else if (location === "/holdings/new") {
     page = <HoldingFormPage />;
@@ -999,5 +1036,5 @@ export default function HoldingsApp() {
     );
   }
 
-  return <HoldingsLayout>{page}</HoldingsLayout>;
+  return <HoldingsLayout dashboard={isDashboardRoute}>{page}</HoldingsLayout>;
 }
