@@ -312,3 +312,38 @@ h1 { font-family: Manrope, sans-serif; font-size: clamp(39px, 5.1vw, 65px); line
   .holding-detail__actions { width: 100%; }
   .holding-detail__actions > * { flex: 1; }
 }
+
+.rebalancing-content { padding-bottom: 36px; }
+.rebalancing-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 18px; }
+.dashboard-stat__value--profile { font-size: clamp(22px, 3vw, 28px); }
+.rebalancing-card { padding: 22px 24px 17px; }
+.rebalancing-card .dashboard-card__heading { margin-bottom: 18px; }
+.rebalancing-notice { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 6px 12px; margin: 0 0 16px; padding: 13px 15px; border: 1px solid #e5e4fb; border-radius: 11px; background: #f8f7ff; }
+.rebalancing-notice strong { color: #344054; font-size: 12px; }
+.rebalancing-notice p { flex-basis: 100%; margin: 0; color: #667085; font-size: 12px; line-height: 1.55; }
+.rebalancing-notice .button { margin-top: 5px; }
+.rebalancing-notice--profile { flex-direction: column; align-items: flex-start; padding: 22px; }
+.rebalancing-table-wrap { overflow-x: auto; border: 1px solid #e8ebf2; border-radius: 13px; background: #fff; }
+.rebalancing-table { width: 100%; min-width: 720px; border-collapse: collapse; text-align: left; }
+.rebalancing-table th, .rebalancing-table td { padding: 15px 16px; border-bottom: 1px solid #f0f2f6; color: #59657a; font-size: 12px; white-space: nowrap; }
+.rebalancing-table thead th { background: #fafbfe; color: #828da0; font-size: 10px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; }
+.rebalancing-table tbody tr:last-child th, .rebalancing-table tbody tr:last-child td { border-bottom: 0; }
+.rebalancing-table tbody th { font-weight: 600; }
+.rebalance-row--attention th, .rebalance-row--attention td { background: #fffaf0; }
+.rebalance-row--attention th:first-child { box-shadow: inset 3px 0 #e7bd69; }
+.rebalance-class-name { display: inline-flex; align-items: center; gap: 10px; color: #344054; }
+.rebalance-drift { display: inline-flex; align-items: center; gap: 7px; color: #667085; font-variant-numeric: tabular-nums; }
+.rebalance-drift--attention { color: #9a6320; font-weight: 700; }
+.rebalance-drift__flag { padding: 3px 6px; border-radius: 5px; background: #fff0cd; color: #8e5a19; font-size: 9px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase; }
+.rebalance-action { font-weight: 700; font-variant-numeric: tabular-nums; }
+.rebalance-action--buy { color: #397858; }
+.rebalance-action--sell { color: #a53b34; }
+.rebalance-action--none { color: #667085; font-weight: 500; }
+.rebalancing-disclaimer { margin: 14px 2px 0; color: #8992a4; font-size: 11px; line-height: 1.5; }
+
+@media (max-width: 700px) {
+  .rebalancing-summary { grid-template-columns: 1fr; gap: 10px; }
+  .rebalancing-card { padding: 19px 16px 15px; }
+  .rebalancing-card .dashboard-card__heading { align-items: flex-start; }
+  .rebalancing-table th, .rebalancing-table td { padding: 13px 12px; }
+}

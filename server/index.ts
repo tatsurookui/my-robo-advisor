@@ -24,6 +24,7 @@ import {
 } from "./holdingStore";
 import { getDashboardSummary } from "./dashboardStore";
 import { validateHoldingInput } from "./holdingValidation";
+import { calculateRebalancing } from "../shared/rebalancing";
 import {
   getUserRiskProfile,
   saveUserRiskProfile,
@@ -234,6 +235,23 @@ app.get("/api/dashboard", async (req, res) => {
     res.json({ dashboard: await getDashboardSummary(pool, userId) });
   } catch (error) {
     respondToHoldingError(res, error);
+  }
+});
+
+app.get("/api/rebalancing", async (req, res) => {
+  const userId = requireSignedInUser(
+    req,
+    res,
+    "Sign in to view your rebalance plan.",
+  );
+  if (!userId) return;
+
+  try {
+    const dashboard = await getDashboardSummary(pool, userId);
+    res.json({ rebalancing: calculateRebalancing(dashboard) });
+  } catch (error) {
+    console.error("Failed to calculate the signed-in user's rebalance plan:", error);
+    res.status(500).json({ error: "Your rebalance plan could not be loaded." });
   }
 });
 
