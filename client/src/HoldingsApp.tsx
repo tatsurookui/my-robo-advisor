@@ -3,6 +3,7 @@ import { useClerk, useUser } from "@clerk/react";
 import { Link, useLocation } from "wouter";
 import DashboardPage from "./DashboardPage";
 import RiskQuizPage from "./RiskQuizPage";
+import RebalancingPage from "./RebalancingPage";
 import {
   getHoldingFieldErrors,
   holdingInputSchema,
@@ -184,7 +185,7 @@ function HoldingsLayout({
 }: {
   children: ReactNode;
   dashboard?: boolean;
-  activePage?: "dashboard" | "risk-quiz";
+  activePage?: "dashboard" | "risk-quiz" | "rebalance";
 }) {
   const { user } = useUser();
   const { signOut } = useClerk();
@@ -204,6 +205,9 @@ function HoldingsLayout({
               </Link>
               <Link href="/holdings/starred" className="holdings-nav__link">
                 Starred
+              </Link>
+              <Link href="/rebalance" className="holdings-nav__link">
+                Rebalance
               </Link>
               <Link href="/risk-quiz" className="holdings-nav__link">
                 Risk Quiz
@@ -240,6 +244,12 @@ function HoldingsLayout({
               </Link>
               <Link href="/holdings/starred">
                 <span aria-hidden="true">☆</span> Starred
+              </Link>
+              <Link
+                href="/rebalance"
+                aria-current={activePage === "rebalance" ? "page" : undefined}
+              >
+                <span aria-hidden="true">↔</span> Rebalance
               </Link>
               <Link
                 href="/risk-quiz"
@@ -1027,12 +1037,15 @@ export default function HoldingsApp() {
     location === "/dashboard" ||
     location === "/dashboard/";
   const isRiskQuizRoute = location === "/risk-quiz" || location === "/risk-quiz/";
+  const isRebalanceRoute = location === "/rebalance" || location === "/rebalance/";
 
   let page;
   if (isDashboardRoute) {
     page = <DashboardPage />;
   } else if (isRiskQuizRoute) {
     page = <RiskQuizPage />;
+  } else if (isRebalanceRoute) {
+    page = <RebalancingPage />;
   } else if (location === "/holdings/starred" || location === "/holdings/starred/") {
     page = <HoldingsListPage starredOnly />;
   } else if (location === "/holdings" || location === "/holdings/") {
@@ -1056,8 +1069,14 @@ export default function HoldingsApp() {
 
   return (
     <HoldingsLayout
-      dashboard={isDashboardRoute || isRiskQuizRoute}
-      activePage={isRiskQuizRoute ? "risk-quiz" : "dashboard"}
+      dashboard={isDashboardRoute || isRiskQuizRoute || isRebalanceRoute}
+      activePage={
+        isRiskQuizRoute
+          ? "risk-quiz"
+          : isRebalanceRoute
+            ? "rebalance"
+            : "dashboard"
+      }
     >
       {page}
     </HoldingsLayout>
