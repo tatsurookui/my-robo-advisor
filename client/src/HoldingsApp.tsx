@@ -13,6 +13,8 @@ interface AssetClass {
   name: string;
 }
 
+type HoldingSort = "market-value" | "ticker" | "newest";
+
 interface Holding {
   id: string;
   asset_class_id: number;
@@ -160,6 +162,10 @@ function formatPrice(price: string) {
   }).format(Number(price));
 }
 
+function formatMarketValue(quantity: string, price: string) {
+  return formatPrice(String(Number(quantity) * Number(price)));
+}
+
 function BrandLink() {
   return (
     <Link href="/" className="brand">
@@ -206,37 +212,76 @@ function HoldingsLayout({ children }: { children: ReactNode }) {
 
 function HoldingsListPage({ starredOnly = false }: { starredOnly?: boolean }) {
   const [holdings, setHoldings] = useState<Holding[]>([]);
+  const [assetClasses, setAssetClasses] = useState<AssetClass[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [filterError, setFilterError] = useState("");
   const [reload, setReload] = useState(0);
+  const [search, setSearch] = useState("");
+  const [assetClassId, setAssetClassId] = useState("");
+  const [sort, setSort] = useState<HoldingSort>("newest");
 
   useEffect(() => {
     let cancelled = false;
-    setIsLoading(true);
-    setError("");
-    requestJson<{ holdings: Holding[] }>(
-      starredOnly ? "/api/holdings/starred" : "/api/holdings",
-    )
-      .then(({ holdings: result }) => {
-        if (!cancelled) setHoldings(result);
+    setFilterError("");
+    requestJson<{ assetClasses: AssetClass[] }>("/api/asset-classes")
+      .then(({ assetClasses: result }) => {
+        if (!cancelled) setAssetClasses(result);
       })
       .catch((requestError: unknown) => {
         if (!cancelled) {
-          setError(
+          setFilterError(
             requestError instanceof Error
               ? requestError.message
-              : "Your holdings could not be loaded.",
+              : "Asset class filters could not be loaded.",
           );
         }
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [reload, starredOnly]);
+  }, [reload]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const query = new URLSearchParams();
+    if (search.trim()) query.set("search", search.trim());
+    if (assetClassId) query.set("assetClassId", assetClassId);
+    query.set("sort", sort);
+    const endpoint = starredOnly
+      ? "/api/holdings/starred"
+      : "/api/holdings";
+    const queryString = query.toString();
+    const url = `${endpoint}?${queryString}`;
+    const timer = window.setTimeout(() => {
+      setIsLoading(true);
+      setError("");
+      requestJson<{ holdings: Holding[] }>(url)
+        .then(({ holdings: result }) => {
+          if (!cancelled) setHoldings(result);
+        })
+        .catch((requestError: unknown) => {
+          if (!cancelled) {
+            setError(
+              requestError instanceof Error
+                ? requestError.message
+                : "Your holdings could not be loaded.",
+            );
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setIsLoading(false);
+        });
+    }, search.trim() ? 250 : 0);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [reload, starredOnly, search, assetClassId, sort]);
+
+  const hasActiveFilters = Boolean(search.trim() || assetClassId);
 
   return (
     <section className="holdings-content">
@@ -263,6 +308,68 @@ function HoldingsListPage({ starredOnly = false }: { starredOnly?: boolean }) {
         )}
       </div>
 
+      <div className="holding-filters" role="search" aria-label="Find holdings">
+        <label className="holding-filter">
+          <span>Search by ticker or name</span>
+          <input
+            type="search"
+            maxLength={100}
+            placeholder="e.g. VTI or Vanguard"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </label>
+        <label className="holding-filter">
+          <span>Asset class</span>
+          <select
+            value={assetClassId}
+            onChange={(event) => setAssetClassId(event.target.value)}
+          >
+            <option value="">All asset classes</option>
+            {assetClasses.map((assetClass) => (
+              <option key={assetClass.id} value={assetClass.id}>
+                {assetClass.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="holding-filter">
+          <span>Sort by</span>
+          <select
+            value={sort}
+            onChange={(event) => setSort(event.target.value as HoldingSort)}
+          >
+            <option value="market-value">Market value (highest first)</option>
+            <option value="ticker">Ticker (A–Z)</option>
+            <option value="newest">Newest</option>
+          </select>
+        </label>
+        {hasActiveFilters && (
+          <button
+            className="text-button holding-filters__clear"
+            onClick={() => {
+              setSearch("");
+              setAssetClassId("");
+            }}
+            type="button"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+
+      {filterError && (
+        <div className="holdings-alert" role="alert">
+          <span>{filterError}</span>
+          <button
+            className="text-button"
+            onClick={() => setReload((attempt) => attempt + 1)}
+            type="button"
+          >
+            Try again
+          </button>
+        </div>
+      )}
       {isLoading && <p className="holdings-message">Loading your holdings…</p>}
       {error && (
         <div className="holdings-alert" role="alert">
@@ -279,17 +386,34 @@ function HoldingsListPage({ starredOnly = false }: { starredOnly?: boolean }) {
       {!isLoading && !error && holdings.length === 0 && (
         <div className="holdings-empty">
           <div className="holdings-empty__icon" aria-hidden="true">
-            {starredOnly ? "☆" : "+"}
+            {hasActiveFilters ? "⌕" : starredOnly ? "☆" : "+"}
           </div>
           <h2>
-            {starredOnly ? "No starred holdings yet" : "Your portfolio starts here"}
+            {hasActiveFilters
+              ? "No matching holdings"
+              : starredOnly
+                ? "No starred holdings yet"
+                : "Your portfolio starts here"}
           </h2>
           <p>
-            {starredOnly
-              ? "Star a holding to keep it easy to find."
-              : "Add your first holding to start tracking your investments."}
+            {hasActiveFilters
+              ? "Try another search or choose a different asset class."
+              : starredOnly
+                ? "Star a holding to keep it easy to find."
+                : "Add your first holding to start tracking your investments."}
           </p>
-          {starredOnly ? (
+          {hasActiveFilters ? (
+            <button
+              className="button button--quiet"
+              onClick={() => {
+                setSearch("");
+                setAssetClassId("");
+              }}
+              type="button"
+            >
+              Clear filters
+            </button>
+          ) : starredOnly ? (
             <Link href="/holdings" className="button">
               Browse holdings
             </Link>
@@ -310,6 +434,7 @@ function HoldingsListPage({ starredOnly = false }: { starredOnly?: boolean }) {
                 <th scope="col">Asset class</th>
                 <th scope="col">Quantity</th>
                 <th scope="col">Price per share</th>
+                <th scope="col">Market value</th>
                 <th scope="col">Starred</th>
                 <th scope="col"><span className="visually-hidden">Details</span></th>
               </tr>
@@ -331,6 +456,9 @@ function HoldingsListPage({ starredOnly = false }: { starredOnly?: boolean }) {
                     {formatQuantity(holding.quantity)}
                   </td>
                   <td className="numeric-cell">{formatPrice(holding.price)}</td>
+                  <td className="numeric-cell">
+                    {formatMarketValue(holding.quantity, holding.price)}
+                  </td>
                   <td>
                     <StarToggle
                       holdingId={holding.id}

@@ -47,6 +47,37 @@ describe("holdingStore", () => {
     );
   });
 
+  it("searches ticker and name case-insensitively and combines filters with market-value sorting", async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [savedHolding] });
+
+    await listHoldings({ query } as never, "user_clerk_a", {
+      search: "vTi",
+      assetClassId: 2,
+      sort: "market-value",
+    });
+
+    const [sql, values] = query.mock.calls[0] ?? [];
+    expect(sql).toContain(
+      "a.ticker ILIKE $2 ESCAPE '!' OR a.name ILIKE $2 ESCAPE '!'",
+    );
+    expect(sql).toContain("a.asset_class_id = $3");
+    expect(sql).toContain("a.user_id = $1");
+    expect(sql).toContain("ORDER BY a.quantity * a.price DESC, a.id");
+    expect(values).toEqual(["user_clerk_a", "%vTi%", 2]);
+  });
+
+  it.each([
+    ["ticker", "ORDER BY LOWER(a.ticker) ASC, a.ticker ASC, a.id"],
+    ["newest", "ORDER BY a.created_at DESC, a.id"],
+  ] as const)("sorts holdings by %s", async (sort, expectedOrder) => {
+    const query = vi.fn().mockResolvedValue({ rows: [] });
+
+    await listHoldings({ query } as never, "user_clerk_a", { sort });
+
+    expect(query.mock.calls[0]?.[0]).toContain(expectedOrder);
+    expect(query.mock.calls[0]?.[1]).toEqual(["user_clerk_a"]);
+  });
+
   it("does not return a holding owned by another user", async () => {
     const query = vi.fn().mockResolvedValue({ rows: [] });
 
