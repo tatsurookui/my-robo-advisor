@@ -22,6 +22,7 @@ interface Holding {
   quantity: string;
   price: string;
   notes: string | null;
+  is_starred: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -87,6 +88,65 @@ function FieldError({ id, message }: { id: string; message?: string }) {
   ) : null;
 }
 
+function StarToggle({
+  holdingId,
+  isStarred,
+  onStarChange,
+}: {
+  holdingId: string;
+  isStarred: boolean;
+  onStarChange: (isStarred: boolean) => void;
+}) {
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [error, setError] = useState("");
+
+  async function toggleStar() {
+    if (isUpdating) return;
+    const nextState = !isStarred;
+    setIsUpdating(true);
+    setError("");
+
+    try {
+      const result = await requestJson<{ is_starred: boolean }>(
+        `/api/holdings/${holdingId}/star`,
+        { method: nextState ? "PUT" : "DELETE" },
+      );
+      onStarChange(result.is_starred);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "The star status could not be updated.",
+      );
+    } finally {
+      setIsUpdating(false);
+    }
+  }
+
+  const actionLabel = isStarred ? "Remove from starred" : "Add to starred";
+
+  return (
+    <div className="star-toggle">
+      <button
+        aria-label={actionLabel}
+        aria-pressed={isStarred}
+        className={`star-toggle__button${isStarred ? " star-toggle__button--active" : ""}`}
+        disabled={isUpdating}
+        onClick={toggleStar}
+        title={actionLabel}
+        type="button"
+      >
+        <span aria-hidden="true">{isStarred ? "★" : "☆"}</span>
+      </button>
+      {error && (
+        <span className="star-toggle__error" role="alert">
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function formatQuantity(quantity: string) {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 8 }).format(
     Number(quantity),
@@ -121,6 +181,9 @@ function HoldingsLayout({ children }: { children: ReactNode }) {
           <Link href="/holdings" className="holdings-nav__link">
             Holdings
           </Link>
+          <Link href="/holdings/starred" className="holdings-nav__link">
+            Starred
+          </Link>
           <Link href="/holdings/new" className="button button--small">
             Add holding
           </Link>
@@ -141,7 +204,7 @@ function HoldingsLayout({ children }: { children: ReactNode }) {
   );
 }
 
-function HoldingsListPage() {
+function HoldingsListPage({ starredOnly = false }: { starredOnly?: boolean }) {
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -151,7 +214,9 @@ function HoldingsListPage() {
     let cancelled = false;
     setIsLoading(true);
     setError("");
-    requestJson<{ holdings: Holding[] }>("/api/holdings")
+    requestJson<{ holdings: Holding[] }>(
+      starredOnly ? "/api/holdings/starred" : "/api/holdings",
+    )
       .then(({ holdings: result }) => {
         if (!cancelled) setHoldings(result);
       })
@@ -171,19 +236,31 @@ function HoldingsListPage() {
     return () => {
       cancelled = true;
     };
-  }, [reload]);
+  }, [reload, starredOnly]);
 
   return (
     <section className="holdings-content">
       <div className="holdings-page-heading">
         <div>
-          <div className="eyebrow">YOUR PORTFOLIO</div>
-          <h1>Holdings</h1>
-          <p>Keep your manually entered investments in one place.</p>
+          <div className="eyebrow">
+            {starredOnly ? "WATCHLIST" : "YOUR PORTFOLIO"}
+          </div>
+          <h1>{starredOnly ? "Starred holdings" : "Holdings"}</h1>
+          <p>
+            {starredOnly
+              ? "Your important positions, all in one place."
+              : "Keep your manually entered investments in one place."}
+          </p>
         </div>
-        <Link href="/holdings/new" className="button">
-          Add a holding <span aria-hidden="true">+</span>
-        </Link>
+        {starredOnly ? (
+          <Link href="/holdings" className="button button--quiet">
+            All holdings
+          </Link>
+        ) : (
+          <Link href="/holdings/new" className="button">
+            Add a holding <span aria-hidden="true">+</span>
+          </Link>
+        )}
       </div>
 
       {isLoading && <p className="holdings-message">Loading your holdings…</p>}
@@ -202,13 +279,25 @@ function HoldingsListPage() {
       {!isLoading && !error && holdings.length === 0 && (
         <div className="holdings-empty">
           <div className="holdings-empty__icon" aria-hidden="true">
-            +
+            {starredOnly ? "☆" : "+"}
           </div>
-          <h2>Your portfolio starts here</h2>
-          <p>Add your first holding to start tracking your investments.</p>
-          <Link href="/holdings/new" className="button">
-            Add your first holding
-          </Link>
+          <h2>
+            {starredOnly ? "No starred holdings yet" : "Your portfolio starts here"}
+          </h2>
+          <p>
+            {starredOnly
+              ? "Star a holding to keep it easy to find."
+              : "Add your first holding to start tracking your investments."}
+          </p>
+          {starredOnly ? (
+            <Link href="/holdings" className="button">
+              Browse holdings
+            </Link>
+          ) : (
+            <Link href="/holdings/new" className="button">
+              Add your first holding
+            </Link>
+          )}
         </div>
       )}
       {!isLoading && !error && holdings.length > 0 && (
@@ -221,6 +310,7 @@ function HoldingsListPage() {
                 <th scope="col">Asset class</th>
                 <th scope="col">Quantity</th>
                 <th scope="col">Price per share</th>
+                <th scope="col">Starred</th>
                 <th scope="col"><span className="visually-hidden">Details</span></th>
               </tr>
             </thead>
@@ -241,6 +331,23 @@ function HoldingsListPage() {
                     {formatQuantity(holding.quantity)}
                   </td>
                   <td className="numeric-cell">{formatPrice(holding.price)}</td>
+                  <td>
+                    <StarToggle
+                      holdingId={holding.id}
+                      isStarred={holding.is_starred}
+                      onStarChange={(isStarred) =>
+                        setHoldings((current) =>
+                          starredOnly && !isStarred
+                            ? current.filter((item) => item.id !== holding.id)
+                            : current.map((item) =>
+                                item.id === holding.id
+                                  ? { ...item, is_starred: isStarred }
+                                  : item,
+                              ),
+                        )
+                      }
+                    />
+                  </td>
                   <td>
                     <Link
                       href={`/holdings/${holding.id}`}
@@ -345,6 +452,15 @@ function HoldingDetailPage({ holdingId }: { holdingId: string }) {
               <p>{holding.name}</p>
             </div>
             <div className="holding-detail__actions">
+              <StarToggle
+                holdingId={holding.id}
+                isStarred={holding.is_starred}
+                onStarChange={(isStarred) =>
+                  setHolding((current) =>
+                    current ? { ...current, is_starred: isStarred } : current,
+                  )
+                }
+              />
               <Link
                 href={`/holdings/${holding.id}/edit`}
                 className="button button--quiet"
@@ -734,7 +850,9 @@ export default function HoldingsApp() {
   const detailMatch = location.match(/^\/holdings\/([^/]+)\/?$/);
 
   let page;
-  if (location === "/" || location === "/holdings" || location === "/holdings/") {
+  if (location === "/holdings/starred" || location === "/holdings/starred/") {
+    page = <HoldingsListPage starredOnly />;
+  } else if (location === "/" || location === "/holdings" || location === "/holdings/") {
     page = <HoldingsListPage />;
   } else if (location === "/holdings/new") {
     page = <HoldingFormPage />;
