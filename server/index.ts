@@ -24,7 +24,15 @@ import {
 } from "./holdingStore";
 import { getDashboardSummary } from "./dashboardStore";
 import { validateHoldingInput } from "./holdingValidation";
-import { upsertUserRecord } from "./userStore";
+import {
+  getUserRiskProfile,
+  saveUserRiskProfile,
+  upsertUserRecord,
+} from "./userStore";
+import {
+  calculateRiskAssessment,
+  riskQuizAnswersSchema,
+} from "../shared/riskQuiz";
 
 const app = express();
 const port = Number(process.env.PORT ?? 5000);
@@ -83,14 +91,69 @@ app.post("/api/auth/sync", async (req, res) => {
   }
 });
 
-function requireSignedInUser(req: Request, res: Response): string | null {
+function requireSignedInUser(
+  req: Request,
+  res: Response,
+  unauthorizedMessage = "Sign in to manage holdings.",
+): string | null {
   const { userId } = getAuth(req);
   if (!userId) {
-    res.status(401).json({ error: "Sign in to manage holdings." });
+    res.status(401).json({ error: unauthorizedMessage });
     return null;
   }
   return userId;
 }
+
+app.get("/api/risk-profile", async (req, res) => {
+  const userId = requireSignedInUser(
+    req,
+    res,
+    "Sign in to view your risk profile.",
+  );
+  if (!userId) return;
+
+  try {
+    const riskProfile = await getUserRiskProfile(pool, userId);
+    if (!riskProfile) {
+      res.status(404).json({ error: "Your account could not be found." });
+      return;
+    }
+    res.json({ riskProfile });
+  } catch (error) {
+    console.error("Failed to load the signed-in user's risk profile:", error);
+    res.status(500).json({ error: "Your risk profile could not be loaded." });
+  }
+});
+
+app.put("/api/risk-profile", async (req, res) => {
+  const userId = requireSignedInUser(
+    req,
+    res,
+    "Sign in to save your risk profile.",
+  );
+  if (!userId) return;
+
+  const parsedAnswers = riskQuizAnswersSchema.safeParse(req.body);
+  if (!parsedAnswers.success) {
+    res.status(400).json({
+      error: "Choose one answer for each of the three questions.",
+    });
+    return;
+  }
+
+  try {
+    const assessment = calculateRiskAssessment(parsedAnswers.data);
+    const riskProfile = await saveUserRiskProfile(pool, userId, assessment);
+    if (!riskProfile) {
+      res.status(404).json({ error: "Your account could not be found." });
+      return;
+    }
+    res.json({ riskProfile });
+  } catch (error) {
+    console.error("Failed to save the signed-in user's risk profile:", error);
+    res.status(500).json({ error: "Your risk profile could not be saved." });
+  }
+});
 
 const HOLDING_SORTS = new Set<HoldingSort>([
   "market-value",
