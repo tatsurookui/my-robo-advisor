@@ -1,3 +1,5 @@
+import type { RiskProfile } from "./riskQuiz";
+
 export interface DashboardHolding {
   id: string;
   ticker: string;
@@ -10,6 +12,9 @@ export interface DashboardHolding {
 export interface DashboardAssetClass {
   id: number;
   name: string;
+  target_conservative: string | number;
+  target_moderate: string | number;
+  target_aggressive: string | number;
 }
 
 export interface DashboardAllocation {
@@ -27,11 +32,32 @@ export interface LargestHolding {
   marketValue: number;
 }
 
+export interface RecommendedAllocation {
+  assetClassId: number;
+  assetClassName: string;
+  percentage: number;
+  color: string;
+}
+
+export interface DashboardChartAllocation {
+  assetClassId: number;
+  assetClassName: string;
+  value: number;
+  color: string;
+}
+
+export interface DashboardRiskProfile {
+  score: number;
+  profile: RiskProfile;
+}
+
 export interface DashboardSummary {
   totalPortfolioValue: number;
   holdingCount: number;
   largestHolding: LargestHolding | null;
   allocations: DashboardAllocation[];
+  riskProfile: DashboardRiskProfile | null;
+  recommendedAllocations: RecommendedAllocation[] | null;
 }
 
 const ASSET_CLASS_ORDER = [
@@ -41,16 +67,66 @@ const ASSET_CLASS_ORDER = [
   "Cash",
 ] as const;
 
-const ASSET_CLASS_COLORS: Record<(typeof ASSET_CLASS_ORDER)[number], string> = {
+export const ASSET_CLASS_COLORS: Record<(typeof ASSET_CLASS_ORDER)[number], string> = {
   "US Stocks": "#5049cf",
   "International Stocks": "#7594e9",
   Bonds: "#57afa4",
   Cash: "#e7bd69",
 };
 
+const TARGET_FIELD_BY_PROFILE = {
+  conservative: "target_conservative",
+  moderate: "target_moderate",
+  aggressive: "target_aggressive",
+} as const;
+
+export function calculateRecommendedAllocations(
+  assetClasses: readonly DashboardAssetClass[],
+  profile: RiskProfile,
+): RecommendedAllocation[] {
+  const assetClassByName = new Map(
+    assetClasses.map((assetClass) => [assetClass.name, assetClass]),
+  );
+  const targetField = TARGET_FIELD_BY_PROFILE[profile];
+  const allocations = ASSET_CLASS_ORDER.map((assetClassName) => {
+    const assetClass = assetClassByName.get(assetClassName);
+    if (!assetClass) {
+      throw new Error(`Dashboard asset class is missing: ${assetClassName}`);
+    }
+
+    const percentage = Number(assetClass[targetField]);
+    if (!Number.isFinite(percentage) || percentage < 0 || percentage > 100) {
+      throw new Error(`Recommended allocation is invalid: ${assetClassName}`);
+    }
+
+    return {
+      assetClassId: assetClass.id,
+      assetClassName,
+      percentage,
+      color: ASSET_CLASS_COLORS[assetClassName],
+    };
+  });
+
+  const totalPercentage = allocations.reduce(
+    (total, allocation) => total + allocation.percentage,
+    0,
+  );
+  if (Math.abs(totalPercentage - 100) > 0.001) {
+    throw new Error(
+      `Recommended allocations for ${profile} must total 100%.`,
+    );
+  }
+
+  return allocations;
+}
+
 export function calculateDashboardSummary(
   holdings: readonly DashboardHolding[],
   assetClasses: readonly DashboardAssetClass[],
+  savedRiskProfile: {
+    risk_score: number | null;
+    risk_profile: RiskProfile | null;
+  } | null = null,
 ): DashboardSummary {
   const assetClassByName = new Map(
     assetClasses.map((assetClass) => [assetClass.name, assetClass]),
@@ -107,10 +183,24 @@ export function calculateDashboardSummary(
     }
   }
 
+  const riskProfile =
+    savedRiskProfile?.risk_score !== null &&
+    savedRiskProfile?.risk_score !== undefined &&
+    savedRiskProfile.risk_profile !== null
+      ? {
+          score: savedRiskProfile.risk_score,
+          profile: savedRiskProfile.risk_profile,
+        }
+      : null;
+
   return {
     totalPortfolioValue,
     holdingCount: holdings.length,
     largestHolding,
     allocations,
+    riskProfile,
+    recommendedAllocations: riskProfile
+      ? calculateRecommendedAllocations(assetClasses, riskProfile.profile)
+      : null,
   };
 }
