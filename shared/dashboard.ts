@@ -1,9 +1,11 @@
 import type { RiskProfile } from "./riskQuiz";
+import { centsToNumber, multiplyDecimalsToCents } from "./money";
+import { getHoldingDisplayName } from "./holdingDisplay";
 
 export interface DashboardHolding {
   id: string;
-  ticker: string;
-  name: string;
+  ticker: string | null;
+  name: string | null;
   asset_class_id: number;
   quantity: string | number;
   price: string | number;
@@ -21,15 +23,17 @@ export interface DashboardAllocation {
   assetClassId: number;
   assetClassName: string;
   marketValue: number;
+  marketValueCents: string;
   percentage: number;
   color: string;
 }
 
 export interface LargestHolding {
   id: string;
-  ticker: string;
-  name: string;
+  ticker: string | null;
+  name: string | null;
   marketValue: number;
+  marketValueCents: string;
 }
 
 export interface RecommendedAllocation {
@@ -53,6 +57,7 @@ export interface DashboardRiskProfile {
 
 export interface DashboardSummary {
   totalPortfolioValue: number;
+  totalPortfolioValueCents: string;
   holdingCount: number;
   largestHolding: LargestHolding | null;
   allocations: DashboardAllocation[];
@@ -140,6 +145,7 @@ export function calculateDashboardSummary(
       assetClassId: assetClass.id,
       assetClassName,
       marketValue: 0,
+      marketValueCents: "0",
       percentage: 0,
       color: ASSET_CLASS_COLORS[assetClassName],
     };
@@ -148,38 +154,60 @@ export function calculateDashboardSummary(
     allocations.map((allocation) => [allocation.assetClassId, allocation]),
   );
 
-  let totalPortfolioValue = 0;
+  let totalPortfolioValueCents = 0n;
   let largestHolding: LargestHolding | null = null;
+  let largestHoldingCents = -1n;
 
   for (const holding of holdings) {
+    const marketValueCents = multiplyDecimalsToCents(
+      holding.quantity,
+      holding.price,
+    );
     const quantity = Number(holding.quantity);
     const price = Number(holding.price);
-    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(price) || price < 0) {
-      throw new Error(`Dashboard received invalid values for ${holding.ticker}.`);
+    if (
+      marketValueCents === null ||
+      !Number.isFinite(quantity) ||
+      quantity <= 0 ||
+      !Number.isFinite(price) ||
+      price < 0
+    ) {
+      throw new Error(
+        `Dashboard received invalid values for ${getHoldingDisplayName(holding)}.`,
+      );
     }
 
     const allocation = allocationById.get(holding.asset_class_id);
     if (!allocation) {
-      throw new Error(`Dashboard asset class is missing for ${holding.ticker}.`);
+      throw new Error(
+        `Dashboard asset class is missing for ${getHoldingDisplayName(holding)}.`,
+      );
     }
 
-    const marketValue = quantity * price;
-    allocation.marketValue += marketValue;
-    totalPortfolioValue += marketValue;
+    const allocationCents =
+      BigInt(allocation.marketValueCents) + marketValueCents;
+    allocation.marketValueCents = allocationCents.toString();
+    allocation.marketValue = centsToNumber(allocationCents);
+    totalPortfolioValueCents += marketValueCents;
 
-    if (!largestHolding || marketValue > largestHolding.marketValue) {
+    if (!largestHolding || marketValueCents > largestHoldingCents) {
+      largestHoldingCents = marketValueCents;
       largestHolding = {
         id: holding.id,
         ticker: holding.ticker,
         name: holding.name,
-        marketValue,
+        marketValue: centsToNumber(marketValueCents),
+        marketValueCents: marketValueCents.toString(),
       };
     }
   }
 
-  if (totalPortfolioValue > 0) {
+  const totalPortfolioValue = centsToNumber(totalPortfolioValueCents);
+  if (totalPortfolioValueCents > 0n) {
     for (const allocation of allocations) {
-      allocation.percentage = (allocation.marketValue / totalPortfolioValue) * 100;
+      allocation.percentage =
+        Number(BigInt(allocation.marketValueCents) * 100_000_000n / totalPortfolioValueCents) /
+        1_000_000;
     }
   }
 
@@ -195,6 +223,7 @@ export function calculateDashboardSummary(
 
   return {
     totalPortfolioValue,
+    totalPortfolioValueCents: totalPortfolioValueCents.toString(),
     holdingCount: holdings.length,
     largestHolding,
     allocations,

@@ -4,14 +4,13 @@ import type {
   DashboardChartAllocation,
   DashboardSummary,
 } from "../../shared/dashboard";
+import { getHoldingDisplayName, getHoldingSecondaryLabel } from "../../shared/holdingDisplay";
+import { formatUsdCents } from "../../shared/money";
 
 const DashboardChart = lazy(() => import("./DashboardChart"));
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(value);
+function formatCurrency(cents: string) {
+  return formatUsdCents(cents);
 }
 
 function formatPercentage(value: number) {
@@ -121,7 +120,7 @@ export default function DashboardPage() {
             <article className="dashboard-stat">
               <span className="dashboard-stat__label">Total portfolio value</span>
               <strong className="dashboard-stat__value">
-                {formatCurrency(dashboard.totalPortfolioValue)}
+                {formatCurrency(dashboard.totalPortfolioValueCents)}
               </strong>
               <span className="dashboard-stat__detail">Current market value</span>
             </article>
@@ -136,12 +135,17 @@ export default function DashboardPage() {
               <span className="dashboard-stat__label">Largest holding</span>
               <strong className="dashboard-stat__value dashboard-stat__value--largest">
                 {dashboard.largestHolding
-                  ? formatCurrency(dashboard.largestHolding.marketValue)
+                  ? formatCurrency(dashboard.largestHolding.marketValueCents)
                   : "—"}
               </strong>
               <span className="dashboard-stat__detail">
                 {dashboard.largestHolding
-                  ? `${dashboard.largestHolding.ticker} · ${dashboard.largestHolding.name}`
+                  ? [
+                      getHoldingDisplayName(dashboard.largestHolding),
+                      getHoldingSecondaryLabel(dashboard.largestHolding),
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
                   : "Add a holding to see your largest position"}
               </span>
             </article>
@@ -158,7 +162,7 @@ export default function DashboardPage() {
                   <p>Your portfolio by asset class</p>
                 </div>
                 <span className="dashboard-card__total">
-                  {formatCurrency(dashboard.totalPortfolioValue)}
+                  {formatCurrency(dashboard.totalPortfolioValueCents)}
                 </span>
               </div>
               <div className="dashboard-comparison-chart">
@@ -207,7 +211,7 @@ export default function DashboardPage() {
                       <span className="dashboard-allocation-list__name">
                         {allocation.assetClassName}
                       </span>
-                      <small>{formatCurrency(allocation.marketValue)}</small>
+                      <small>{formatCurrency(allocation.marketValueCents)}</small>
                     </span>
                     <strong>{formatPercentage(allocation.percentage)}</strong>
                   </li>

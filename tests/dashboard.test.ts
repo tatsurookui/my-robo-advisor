@@ -68,7 +68,11 @@ describe("dashboard summary", () => {
       ticker: "VTI",
       name: "Vanguard Total Stock Market ETF",
       marketValue: 2500,
+      marketValueCents: "250000",
     });
+    expect(summary.totalPortfolioValueCents).toBe("395000");
+    expect(summary.allocations.map(({ marketValueCents }) => marketValueCents))
+      .toEqual(["250000", "0", "145000", "0"]);
     expect(summary.allocations).toHaveLength(4);
     expect(summary.allocations.map(({ marketValue }) => marketValue)).toEqual([
       2500,
@@ -78,6 +82,59 @@ describe("dashboard summary", () => {
     ]);
     expect(summary.allocations[0]?.percentage).toBeCloseTo(63.2911, 3);
     expect(summary.allocations[2]?.percentage).toBeCloseTo(36.7089, 3);
+  });
+
+  it("calculates unnamed holding values with exact decimal cents", () => {
+    const summary = calculateDashboardSummary(
+      [
+        {
+          id: "unnamed",
+          ticker: null,
+          name: null,
+          asset_class_id: 1,
+          quantity: "0.25",
+          price: "100",
+        },
+      ],
+      assetClasses,
+    );
+
+    expect(summary.totalPortfolioValue).toBe(25);
+    expect(summary.totalPortfolioValueCents).toBe("2500");
+    expect(summary.largestHolding).toMatchObject({
+      ticker: null,
+      name: null,
+      marketValue: 25,
+      marketValueCents: "2500",
+    });
+  });
+
+  it("calculates the $3,950 example for unnamed and ticker-only holdings", () => {
+    const summary = calculateDashboardSummary(
+      [
+        {
+          id: "unnamed-stock",
+          ticker: null,
+          name: null,
+          asset_class_id: 1,
+          quantity: "10",
+          price: "250",
+        },
+        {
+          id: "ticker-only-bond",
+          ticker: "BND",
+          name: null,
+          asset_class_id: 3,
+          quantity: "20",
+          price: "72.50",
+        },
+      ],
+      assetClasses,
+    );
+
+    expect(summary.totalPortfolioValueCents).toBe("395000");
+    expect(summary.totalPortfolioValue).toBe(3950);
+    expect(summary.holdingCount).toBe(2);
   });
 
   it("returns a zeroed summary for an empty portfolio", () => {
