@@ -975,9 +975,9 @@ export default function HoldingsApp() {
   const { user, isLoaded } = useUser();
   const { signOut } = useClerk();
   const [location, setLocation] = useLocation();
-  const [syncState, setSyncState] = useState<"loading" | "ready" | "error">(
-    "loading",
-  );
+  const [syncState, setSyncState] = useState<
+    "loading" | "ready" | "error" | "transfer-required" | "transferring"
+  >("loading");
   const [syncError, setSyncError] = useState(
     "Your account could not be loaded. Try again before managing your holdings.",
   );
@@ -996,8 +996,22 @@ export default function HoldingsApp() {
       .then(async (response) => {
         if (!response.ok) {
           const payload = (await response.json().catch(() => null)) as
-            | { error?: unknown }
+            | { code?: unknown; error?: unknown }
             | null;
+          if (
+            response.status === 409 &&
+            payload?.code === "ACCOUNT_TRANSFER_REQUIRED"
+          ) {
+            if (!cancelled) {
+              setSyncError(
+                typeof payload.error === "string"
+                  ? payload.error
+                  : "An existing account uses this verified email.",
+              );
+              setSyncState("transfer-required");
+            }
+            return;
+          }
           throw new Error(
             typeof payload?.error === "string"
               ? payload.error
@@ -1022,8 +1036,79 @@ export default function HoldingsApp() {
     };
   }, [isLoaded, user?.id, syncAttempt]);
 
+  async function handleAccountTransfer() {
+    setSyncState("transferring");
+    setSyncError("");
+    try {
+      const response = await fetch("/api/auth/transfer", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirm: true }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as
+          | { error?: unknown }
+          | null;
+        throw new Error(
+          typeof payload?.error === "string"
+            ? payload.error
+            : "The existing account could not be transferred. No data was changed.",
+        );
+      }
+      setSyncState("ready");
+    } catch (error: unknown) {
+      setSyncError(
+        error instanceof Error
+          ? error.message
+          : "The existing account could not be transferred. No data was changed.",
+      );
+      setSyncState("transfer-required");
+    }
+  }
+
   if (!isLoaded || !user || syncState === "loading") {
     return <main className="loading-screen">Loading your secure portfolio…</main>;
+  }
+
+  if (
+    syncState === "transfer-required" ||
+    syncState === "transferring"
+  ) {
+    return (
+      <main className="holdings-app">
+        <div className="holdings-sync-error" role="alert">
+          <h1>Existing account data found</h1>
+          <p>{syncError}</p>
+          <p>
+            If this account is yours, confirm to move its saved risk profile,
+            holdings, and starred holdings to your current sign-in. This changes
+            which Clerk account owns that data. If you do not recognize it, log
+            out instead.
+          </p>
+          <div>
+            <button
+              className="button"
+              disabled={syncState === "transferring"}
+              onClick={handleAccountTransfer}
+              type="button"
+            >
+              {syncState === "transferring"
+                ? "Transferring…"
+                : "Transfer my existing account"}
+            </button>
+            <button
+              className="button button--quiet"
+              disabled={syncState === "transferring"}
+              onClick={() => signOut({ redirectUrl: "/" })}
+              type="button"
+            >
+              Log out
+            </button>
+          </div>
+        </div>
+      </main>
+    );
   }
 
   if (syncState === "error") {
