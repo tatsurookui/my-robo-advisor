@@ -26,9 +26,13 @@ import { getDashboardSummary } from "./dashboardStore";
 import { validateHoldingInput } from "./holdingValidation";
 import { calculateRebalancing } from "../shared/rebalancing";
 import {
+  AccountTransferRequiredError,
+  ClerkIdentityMismatchError,
+  ensureUserRecord,
   getUserRiskProfile,
   saveUserRiskProfile,
-  upsertUserRecord,
+  transferUserRecord,
+  UserEmailVerificationRequiredError,
 } from "./userStore";
 import {
   calculateRiskAssessment,
@@ -55,6 +59,23 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
+async function loadVerifiedClerkIdentity(authenticatedUserId: string) {
+  const clerkUser = await clerkClient.users.getUser(authenticatedUserId);
+  const verifiedPrimaryEmail = clerkUser.emailAddresses.find(
+    (address) =>
+      address.id === clerkUser.primaryEmailAddressId &&
+      address.verification?.status === "verified",
+  );
+  const verifiedEmail =
+    verifiedPrimaryEmail?.emailAddress ??
+    clerkUser.emailAddresses.find(
+      (address) => address.verification?.status === "verified",
+    )?.emailAddress ??
+    null;
+
+  return { id: clerkUser.id, verifiedEmail };
+}
+
 app.post("/api/auth/sync", async (req, res) => {
   const { userId } = getAuth(req);
   if (!userId) {
@@ -63,31 +84,52 @@ app.post("/api/auth/sync", async (req, res) => {
   }
 
   try {
-    const clerkUser = await clerkClient.users.getUser(userId);
-    const verifiedPrimaryEmail = clerkUser.emailAddresses.find(
-      (address) =>
-        address.id === clerkUser.primaryEmailAddressId &&
-        address.verification?.status === "verified",
+    const account = await ensureUserRecord(
+      pool,
+      userId,
+      loadVerifiedClerkIdentity,
     );
-    const email =
-      verifiedPrimaryEmail?.emailAddress ??
-      clerkUser.emailAddresses.find((address) => address.verification?.status === "verified")
-        ?.emailAddress;
-
-    if (!email) {
-      res.status(422).json({ error: "Verify an email address to finish setting up your account." });
-      return;
-    }
-
-    const account = await upsertUserRecord(pool, { id: userId, email });
     res.json({ user: account });
   } catch (error) {
-    if (typeof error === "object" && error !== null && "code" in error && error.code === "23505") {
-      res.status(409).json({ error: "This email is already linked to another account." });
+    if (error instanceof AccountTransferRequiredError) {
+      res.status(409).json({
+        code: "ACCOUNT_TRANSFER_REQUIRED",
+        error:
+          "An account with this verified email has saved data. Review the transfer before continuing.",
+      });
       return;
     }
 
-    console.error("Failed to sync the signed-in Clerk user:", error);
+    if (error instanceof UserEmailVerificationRequiredError) {
+      res.status(422).json({ error: error.message });
+      return;
+    }
+
+    if (error instanceof ClerkIdentityMismatchError) {
+      console.error("Refused to initialize a mismatched Clerk identity.");
+      res.status(403).json({
+        error: "Your signed-in account could not be verified. Please sign in again.",
+      });
+      return;
+    }
+
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "23505") {
+      res.status(409).json({
+        code: "ACCOUNT_TRANSFER_REQUIRED",
+        error:
+          "An account with this verified email has saved data. Review the transfer before continuing.",
+      });
+      return;
+    }
+
+    const errorCode =
+      typeof error === "object" && error !== null && "code" in error
+        ? String(error.code)
+        : undefined;
+    console.error("Failed to sync the signed-in Clerk user:", {
+      name: error instanceof Error ? error.name : "UnknownError",
+      code: errorCode,
+    });
     res.status(500).json({ error: "Your account could not be saved. Please try again." });
   }
 });
@@ -104,6 +146,61 @@ function requireSignedInUser(
   }
   return userId;
 }
+
+app.post("/api/auth/transfer", async (req, res) => {
+  const userId = requireSignedInUser(
+    req,
+    res,
+    "Sign in before transferring an existing account.",
+  );
+  if (!userId) return;
+
+  if (req.body?.confirm !== true) {
+    res.status(400).json({ error: "Confirm the account transfer to continue." });
+    return;
+  }
+
+  try {
+    const identity = await loadVerifiedClerkIdentity(userId);
+    if (identity.id !== userId) {
+      throw new ClerkIdentityMismatchError();
+    }
+    if (!identity.verifiedEmail) {
+      throw new UserEmailVerificationRequiredError();
+    }
+
+    const account = await transferUserRecord(
+      pool,
+      userId,
+      identity.verifiedEmail,
+    );
+    res.json({ user: account });
+  } catch (error) {
+    if (error instanceof UserEmailVerificationRequiredError) {
+      res.status(422).json({ error: error.message });
+      return;
+    }
+
+    if (error instanceof ClerkIdentityMismatchError) {
+      res.status(403).json({
+        error: "Your signed-in account could not be verified. Please sign in again.",
+      });
+      return;
+    }
+
+    const errorCode =
+      typeof error === "object" && error !== null && "code" in error
+        ? String(error.code)
+        : undefined;
+    console.error("Failed to transfer a verified Clerk account:", {
+      name: error instanceof Error ? error.name : "UnknownError",
+      code: errorCode,
+    });
+    res.status(500).json({
+      error: "The existing account could not be transferred. No data was changed.",
+    });
+  }
+});
 
 app.get("/api/risk-profile", async (req, res) => {
   const userId = requireSignedInUser(
