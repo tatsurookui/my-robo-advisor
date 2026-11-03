@@ -978,6 +978,9 @@ export default function HoldingsApp() {
   const [syncState, setSyncState] = useState<"loading" | "ready" | "error">(
     "loading",
   );
+  const [syncError, setSyncError] = useState(
+    "Your account could not be loaded. Try again before managing your holdings.",
+  );
   const [syncAttempt, setSyncAttempt] = useState(0);
 
   useEffect(() => {
@@ -985,13 +988,33 @@ export default function HoldingsApp() {
 
     let cancelled = false;
     setSyncState("loading");
-    fetch("/api/auth/sync", { method: "POST" })
-      .then((response) => {
-        if (!response.ok) throw new Error("Unable to save your account.");
+    setSyncError("");
+    fetch("/api/auth/sync", {
+      method: "POST",
+      credentials: "same-origin",
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as
+            | { error?: unknown }
+            | null;
+          throw new Error(
+            typeof payload?.error === "string"
+              ? payload.error
+              : "Your account could not be saved. Please try again.",
+          );
+        }
         if (!cancelled) setSyncState("ready");
       })
-      .catch(() => {
-        if (!cancelled) setSyncState("error");
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setSyncError(
+            error instanceof Error
+              ? error.message
+              : "Your account could not be saved. Please try again.",
+          );
+          setSyncState("error");
+        }
       });
 
     return () => {
@@ -1008,7 +1031,7 @@ export default function HoldingsApp() {
       <main className="holdings-app">
         <div className="holdings-sync-error" role="alert">
           <h1>Your account could not be loaded</h1>
-          <p>Try again before managing your holdings.</p>
+          <p>{syncError}</p>
           <div>
             <button
               className="button"

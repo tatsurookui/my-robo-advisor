@@ -11,6 +11,20 @@ export interface AccountRecord {
   created_at: Date;
 }
 
+export class UserEmailVerificationRequiredError extends Error {
+  constructor() {
+    super("Verify an email address to finish setting up your account.");
+    this.name = "UserEmailVerificationRequiredError";
+  }
+}
+
+export class ClerkIdentityMismatchError extends Error {
+  constructor() {
+    super("The signed-in Clerk identity did not match the requested account.");
+    this.name = "ClerkIdentityMismatchError";
+  }
+}
+
 export async function upsertUserRecord(
   database: Pick<Pool, "query">,
   identity: { id: string; email: string },
@@ -29,6 +43,38 @@ export async function upsertUserRecord(
   }
 
   return rows[0];
+}
+
+export async function ensureUserRecord(
+  database: Pick<Pool, "query">,
+  authenticatedUserId: string,
+  loadClerkIdentity: (
+    userId: string,
+  ) => Promise<{ id: string; verifiedEmail: string | null }>,
+): Promise<AccountRecord> {
+  const { rows: existingRows } = await database.query<AccountRecord>(
+    `SELECT id, email, created_at
+     FROM users
+     WHERE id = $1`,
+    [authenticatedUserId],
+  );
+
+  if (existingRows[0]) {
+    return existingRows[0];
+  }
+
+  const identity = await loadClerkIdentity(authenticatedUserId);
+  if (identity.id !== authenticatedUserId) {
+    throw new ClerkIdentityMismatchError();
+  }
+  if (!identity.verifiedEmail) {
+    throw new UserEmailVerificationRequiredError();
+  }
+
+  return upsertUserRecord(database, {
+    id: authenticatedUserId,
+    email: identity.verifiedEmail,
+  });
 }
 
 export interface UserRiskProfile {
