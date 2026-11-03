@@ -6,6 +6,7 @@ import type {
   RebalancingPlan,
   RebalancingRow,
 } from "../../shared/rebalancing";
+import { formatUsdCents } from "../../shared/money";
 
 interface RebalancingResponse {
   rebalancing?: RebalancingPlan;
@@ -18,22 +19,18 @@ const riskProfileLabels: Record<RiskProfile, string> = {
   aggressive: "Aggressive",
 };
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(value);
-}
-
 function formatDrift(value: number) {
   const sign = value > 0 ? "+" : value < 0 ? "−" : "";
   return `${sign}${Math.abs(value).toFixed(1)} pp`;
 }
 
-function getActionLabel(action: RebalanceAction, amount: number) {
-  if (action === "buy") return `Buy ${formatCurrency(amount)}`;
-  if (action === "sell") return `Sell ${formatCurrency(Math.abs(amount))}`;
-  return `No dollar adjustment · ${formatCurrency(0)}`;
+function getActionLabel(action: RebalanceAction, amountCents: string) {
+  const amount = BigInt(amountCents);
+  if (action === "buy") return `Buy ${formatUsdCents(amount)}`;
+  if (action === "sell") {
+    return `Sell ${formatUsdCents(amount < 0n ? -amount : amount)}`;
+  }
+  return `No dollar adjustment · ${formatUsdCents(0n)}`;
 }
 
 async function loadRebalancingPlan(): Promise<RebalancingPlan> {
@@ -82,7 +79,7 @@ function RebalancingRowView({ row }: { row: RebalancingRow }) {
       </td>
       <td>
         <span className={`rebalance-action rebalance-action--${row.action}`}>
-          {getActionLabel(row.action, row.adjustmentAmount)}
+          {getActionLabel(row.action, row.adjustmentAmountCents)}
         </span>
       </td>
     </tr>
@@ -154,7 +151,7 @@ export default function RebalancingPage() {
             <article className="dashboard-stat">
               <span className="dashboard-stat__label">Total portfolio value</span>
               <strong className="dashboard-stat__value">
-                {formatCurrency(plan.totalPortfolioValue)}
+                {formatUsdCents(plan.totalPortfolioValueCents)}
               </strong>
               <span className="dashboard-stat__detail">
                 {plan.holdingCount}{" "}
