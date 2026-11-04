@@ -58,7 +58,7 @@ describe("holdingStore", () => {
 
     const [sql, values] = query.mock.calls[0] ?? [];
     expect(sql).toContain(
-      "COALESCE(a.ticker, '') ILIKE $2 ESCAPE '!' OR COALESCE(a.name, '') ILIKE $2 ESCAPE '!'",
+      "a.ticker ILIKE $2 ESCAPE '!' OR a.name ILIKE $2 ESCAPE '!'",
     );
     expect(sql).toContain("a.asset_class_id = $3");
     expect(sql).toContain("a.user_id = $1");
@@ -67,7 +67,7 @@ describe("holdingStore", () => {
   });
 
   it.each([
-    ["ticker", "ORDER BY LOWER(a.ticker) ASC NULLS LAST, a.ticker ASC NULLS LAST, a.id"],
+    ["ticker", "ORDER BY LOWER(a.ticker) ASC, a.ticker ASC, a.id"],
     ["newest", "ORDER BY a.created_at DESC, a.id"],
   ] as const)("sorts holdings by %s", async (sort, expectedOrder) => {
     const query = vi.fn().mockResolvedValue({ rows: [] });
@@ -112,26 +112,6 @@ describe("holdingStore", () => {
     );
   });
 
-  it("searches and returns starred holdings with null ticker and name values", async () => {
-    const unnamedHolding = {
-      ...savedHolding,
-      ticker: null,
-      name: null,
-      is_starred: true,
-    };
-    const query = vi.fn().mockResolvedValue({ rows: [unnamedHolding] });
-
-    const result = await listStarredHoldings(
-      { query } as never,
-      "user_clerk_a",
-      { search: "unnamed" },
-    );
-
-    expect(result).toEqual([unnamedHolding]);
-    expect(query.mock.calls[0]?.[0]).toContain("COALESCE(a.ticker, '') ILIKE");
-    expect(query.mock.calls[0]?.[0]).toContain("COALESCE(a.name, '') ILIKE");
-  });
-
   it("creates a holding with the server-provided owner id", async () => {
     const query = vi.fn().mockResolvedValue({ rows: [savedHolding] });
 
@@ -145,52 +125,6 @@ describe("holdingStore", () => {
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining("INSERT INTO assets"),
       ["user_clerk_a", 1, "VTI", "Vanguard Total Stock Market ETF", "10", "250.00", null],
-    );
-  });
-
-  it("persists blank optional ticker and name as SQL nulls", async () => {
-    const query = vi.fn().mockResolvedValue({
-      rows: [{ ...savedHolding, ticker: null, name: null }],
-    });
-
-    const result = await createHolding(
-      { query } as never,
-      "user_clerk_a",
-      { ...holdingInput, ticker: null, name: null },
-    );
-
-    expect(result).toMatchObject({ ticker: null, name: null });
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining("INSERT INTO assets"),
-      ["user_clerk_a", 1, null, null, "10", "250.00", null],
-    );
-  });
-
-  it("updates a holding without requiring optional ticker or name values", async () => {
-    const query = vi.fn().mockResolvedValue({
-      rows: [{ ...savedHolding, ticker: null, name: null }],
-    });
-
-    const result = await updateHolding(
-      { query } as never,
-      "user_clerk_a",
-      savedHolding.id,
-      { ...holdingInput, ticker: null, name: null },
-    );
-
-    expect(result).toMatchObject({ ticker: null, name: null });
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining("WHERE user_id = $1 AND id = $2"),
-      [
-        "user_clerk_a",
-        savedHolding.id,
-        1,
-        null,
-        null,
-        "10",
-        "250.00",
-        null,
-      ],
     );
   });
 

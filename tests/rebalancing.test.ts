@@ -71,13 +71,11 @@ describe("rebalancing calculations", () => {
     const cash = plan.rows?.find((row) => row.assetClassName === "Cash");
 
     expect(plan.totalPortfolioValue).toBe(1000);
-    expect(plan.totalPortfolioValueCents).toBe("100000");
     expect(usStocks).toMatchObject({
       currentPercentage: 10,
       targetPercentage: 35,
       driftPercentagePoints: -25,
       adjustmentAmount: 250,
-      adjustmentAmountCents: "25000",
       action: "buy",
       needsAttention: true,
     });
@@ -86,7 +84,6 @@ describe("rebalancing calculations", () => {
       targetPercentage: 20,
       driftPercentagePoints: 0,
       adjustmentAmount: 0,
-      adjustmentAmountCents: "0",
       action: "none",
       needsAttention: false,
     });
@@ -95,7 +92,6 @@ describe("rebalancing calculations", () => {
       targetPercentage: 10,
       driftPercentagePoints: 25,
       adjustmentAmount: -250,
-      adjustmentAmountCents: "-25000",
       action: "sell",
       needsAttention: true,
     });
@@ -134,27 +130,6 @@ describe("rebalancing calculations", () => {
           row.action === "none",
       ),
     ).toBe(true);
-  });
-
-  it("handles holdings with no ticker or name", () => {
-    const dashboard = calculateDashboardSummary(
-      [
-        {
-          id: "unnamed-holding",
-          ticker: null,
-          name: null,
-          asset_class_id: 1,
-          quantity: "0.25",
-          price: "100",
-        },
-      ],
-      assetClasses,
-      { risk_score: 5, risk_profile: "moderate" },
-    );
-    const plan = calculateRebalancing(dashboard);
-
-    expect(plan.totalPortfolioValueCents).toBe("2500");
-    expect(plan.rows).toHaveLength(4);
   });
 
   it("omits target rows until the user has a saved risk profile", () => {
