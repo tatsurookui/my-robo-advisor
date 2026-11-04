@@ -80,6 +80,26 @@ describe("dashboard summary", () => {
     expect(summary.allocations[2]?.percentage).toBeCloseTo(36.7089, 3);
   });
 
+  it("includes fractional shares in market value without treating quantity as dollars", () => {
+    const summary = calculateDashboardSummary(
+      [
+        {
+          id: "holding-fractional",
+          ticker: "",
+          name: "",
+          asset_class_id: 1,
+          quantity: "1.25",
+          price: "80.00",
+        },
+      ],
+      assetClasses,
+    );
+
+    expect(summary.totalPortfolioValue).toBe(100);
+    expect(summary.allocations[0]?.marketValue).toBe(100);
+    expect(summary.largestHolding?.marketValue).toBe(100);
+  });
+
   it("returns a zeroed summary for an empty portfolio", () => {
     const summary = calculateDashboardSummary([], assetClasses);
 

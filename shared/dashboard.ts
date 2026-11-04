@@ -1,4 +1,5 @@
 import type { RiskProfile } from "./riskQuiz";
+import { addDecimalStrings, multiplyDecimalStrings } from "./decimal";
 
 export interface DashboardHolding {
   id: string;
@@ -148,8 +149,9 @@ export function calculateDashboardSummary(
     allocations.map((allocation) => [allocation.assetClassId, allocation]),
   );
 
-  let totalPortfolioValue = 0;
+  let totalPortfolioValueExact = "0";
   let largestHolding: LargestHolding | null = null;
+  const allocationValues = new Map<number, string>();
 
   for (const holding of holdings) {
     const quantity = Number(holding.quantity);
@@ -163,9 +165,22 @@ export function calculateDashboardSummary(
       throw new Error(`Dashboard asset class is missing for ${holding.ticker}.`);
     }
 
-    const marketValue = quantity * price;
-    allocation.marketValue += marketValue;
-    totalPortfolioValue += marketValue;
+    const marketValueExact = multiplyDecimalStrings(
+      String(holding.quantity),
+      String(holding.price),
+    );
+    const marketValue = Number(marketValueExact);
+    allocationValues.set(
+      allocation.assetClassId,
+      addDecimalStrings(
+        allocationValues.get(allocation.assetClassId) ?? "0",
+        marketValueExact,
+      ),
+    );
+    totalPortfolioValueExact = addDecimalStrings(
+      totalPortfolioValueExact,
+      marketValueExact,
+    );
 
     if (!largestHolding || marketValue > largestHolding.marketValue) {
       largestHolding = {
@@ -175,6 +190,13 @@ export function calculateDashboardSummary(
         marketValue,
       };
     }
+  }
+
+  const totalPortfolioValue = Number(totalPortfolioValueExact);
+  for (const allocation of allocations) {
+    allocation.marketValue = Number(
+      allocationValues.get(allocation.assetClassId) ?? "0",
+    );
   }
 
   if (totalPortfolioValue > 0) {

@@ -43,6 +43,23 @@ describe("holding validation", () => {
     });
   });
 
+  it("allows ticker and name to be blank or omitted", () => {
+    for (const labels of [
+      { ticker: "", name: "" },
+      { ticker: "  ", name: "  " },
+      { ticker: undefined, name: undefined },
+    ]) {
+      const result = validateHoldingInput({
+        ...validInput,
+        ...labels,
+      });
+      expect(result).toMatchObject({
+        success: true,
+        input: { ticker: "", name: "" },
+      });
+    }
+  });
+
   it("reports clear messages when required fields are blank", () => {
     const result = holdingInputSchema.safeParse({
       ticker: "  ",
@@ -56,13 +73,28 @@ describe("holding validation", () => {
     if (result.success) return;
 
     expect(getHoldingFieldErrors(result.error)).toEqual({
-      ticker: "Enter a ticker symbol.",
-      name: "Enter a holding name.",
       asset_class_id: "Select an asset class.",
       quantity: "Enter a quantity greater than 0.",
       price: "Enter a price of $0 or more.",
     });
   });
+
+  it.each(["0.5", "1.25", "10.75"])(
+    "preserves fractional share quantity %s exactly",
+    (quantity) => {
+      const result = validateHoldingInput({
+        ...validInput,
+        ticker: "",
+        name: "",
+        quantity,
+      });
+
+      expect(result).toMatchObject({
+        success: true,
+        input: { quantity, ticker: "", name: "" },
+      });
+    },
+  );
 
   it.each(["0", "0.00000000", "-1", "-0.01", "not-a-number"])(
     "rejects invalid quantity %s before a database write",

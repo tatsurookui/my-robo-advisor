@@ -4,14 +4,12 @@ import type {
   DashboardChartAllocation,
   DashboardSummary,
 } from "../../shared/dashboard";
+import { formatUsd } from "../../shared/decimal";
 
 const DashboardChart = lazy(() => import("./DashboardChart"));
 
 function formatCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(value);
+  return formatUsd(value);
 }
 
 function formatPercentage(value: number) {
@@ -141,7 +139,9 @@ export default function DashboardPage() {
               </strong>
               <span className="dashboard-stat__detail">
                 {dashboard.largestHolding
-                  ? `${dashboard.largestHolding.ticker} · ${dashboard.largestHolding.name}`
+                  ? [dashboard.largestHolding.ticker, dashboard.largestHolding.name]
+                      .filter(Boolean)
+                      .join(" · ") || "Unnamed holding"
                   : "Add a holding to see your largest position"}
               </span>
             </article>

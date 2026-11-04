@@ -191,7 +191,11 @@ function parseHoldingListFilters(
   return { search, assetClassId, sort };
 }
 
-function respondToHoldingError(res: Response, error: unknown) {
+function respondToHoldingError(
+  res: Response,
+  error: unknown,
+  fallbackMessage = "We couldn’t complete that holding request.",
+) {
   const code =
     typeof error === "object" && error !== null && "code" in error
       ? String(error.code)
@@ -214,7 +218,7 @@ function respondToHoldingError(res: Response, error: unknown) {
   }
 
   console.error("Holding request failed:", error);
-  res.status(500).json({ error: "We couldn’t complete that holding request." });
+  res.status(500).json({ error: fallbackMessage });
 }
 
 app.get("/api/asset-classes", async (req, res) => {
@@ -323,7 +327,11 @@ app.post("/api/holdings", async (req, res) => {
     const holding = await createHolding(pool, userId, validation.input);
     res.status(201).json({ holding });
   } catch (error) {
-    respondToHoldingError(res, error);
+    respondToHoldingError(
+      res,
+      error,
+      "The holding could not be saved. Please try again.",
+    );
   }
 });
 

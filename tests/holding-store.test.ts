@@ -128,6 +128,42 @@ describe("holdingStore", () => {
     );
   });
 
+  it("saves blank labels and fractional quantity without converting units", async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [
+        {
+          ...savedHolding,
+          ticker: "",
+          name: "",
+          quantity: "1.25000000",
+          price: "80.00000000",
+        },
+      ],
+    });
+
+    const result = await createHolding(
+      { query } as never,
+      "user_clerk_a",
+      { ...holdingInput, ticker: "", name: "", quantity: "1.25", price: "80.00" },
+    );
+
+    expect(result).toMatchObject({
+      ticker: "",
+      name: "",
+      quantity: "1.25000000",
+      price: "80.00000000",
+    });
+    expect(query.mock.calls[0]?.[1]).toEqual([
+      "user_clerk_a",
+      1,
+      "",
+      "",
+      "1.25",
+      "80.00",
+      null,
+    ]);
+  });
+
   it("updates only the requested user's holding", async () => {
     const query = vi.fn().mockResolvedValue({ rows: [savedHolding] });
 

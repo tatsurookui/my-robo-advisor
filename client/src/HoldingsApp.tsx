@@ -10,6 +10,11 @@ import {
   type HoldingFieldErrors,
   type HoldingFieldName,
 } from "../../shared/holdingValidation";
+import {
+  formatDecimalQuantity,
+  formatUsd,
+  multiplyDecimalStrings,
+} from "../../shared/decimal";
 
 interface AssetClass {
   id: number;
@@ -153,20 +158,15 @@ function StarToggle({
 }
 
 function formatQuantity(quantity: string) {
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 8 }).format(
-    Number(quantity),
-  );
+  return formatDecimalQuantity(quantity);
 }
 
 function formatPrice(price: string) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(Number(price));
+  return formatUsd(price);
 }
 
 function formatMarketValue(quantity: string, price: string) {
-  return formatPrice(String(Number(quantity) * Number(price)));
+  return formatUsd(multiplyDecimalStrings(quantity, price));
 }
 
 function BrandLink() {
@@ -503,8 +503,8 @@ function HoldingsListPage({ starredOnly = false }: { starredOnly?: boolean }) {
                       href={`/holdings/${holding.id}`}
                       className="holding-name"
                     >
-                      <strong>{holding.ticker}</strong>
-                      <span>{holding.name}</span>
+                      <strong>{holding.ticker || "—"}</strong>
+                      <span>{holding.name || "Unnamed holding"}</span>
                     </Link>
                   </td>
                   <td>{holding.asset_class_name}</td>
@@ -536,7 +536,7 @@ function HoldingsListPage({ starredOnly = false }: { starredOnly?: boolean }) {
                     <Link
                       href={`/holdings/${holding.id}`}
                       className="table-action"
-                      aria-label={`View ${holding.ticker} details`}
+                      aria-label={`View ${holding.ticker || holding.name || "unnamed holding"} details`}
                     >
                       View
                     </Link>
@@ -586,7 +586,11 @@ function HoldingDetailPage({ holdingId }: { holdingId: string }) {
 
   async function handleDelete() {
     if (!holding || isDeleting) return;
-    if (!window.confirm(`Are you sure you want to delete ${holding.ticker}?`)) {
+    if (
+      !window.confirm(
+        `Are you sure you want to delete ${holding.ticker || holding.name || "this holding"}?`,
+      )
+    ) {
       return;
     }
 
@@ -632,8 +636,12 @@ function HoldingDetailPage({ holdingId }: { holdingId: string }) {
           <div className="holding-detail__heading">
             <div>
               <div className="eyebrow">HOLDING DETAILS</div>
-              <h1>{holding.ticker}</h1>
-              <p>{holding.name}</p>
+              <h1>{holding.name || holding.ticker || "Unnamed holding"}</h1>
+              <p>
+                {holding.ticker
+                  ? `Ticker: ${holding.ticker}`
+                  : "No ticker symbol added."}
+              </p>
             </div>
             <div className="holding-detail__actions">
               <StarToggle
@@ -700,13 +708,15 @@ function HoldingFormPage({
   const [form, setForm] = useState<HoldingFormValues>(emptyForm);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [saveError, setSaveError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<HoldingFieldErrors>({});
 
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
-    setError("");
+    setLoadError("");
+    setSaveError("");
 
     const classesRequest =
       requestJson<{ assetClasses: AssetClass[] }>("/api/asset-classes");
@@ -737,7 +747,7 @@ function HoldingFormPage({
       })
       .catch((requestError: unknown) => {
         if (!cancelled) {
-          setError(
+          setLoadError(
             requestError instanceof Error
               ? requestError.message
               : "The form could not be loaded.",
@@ -783,11 +793,11 @@ function HoldingFormPage({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isSaving) return;
-    setError("");
+    setSaveError("");
     const validation = holdingInputSchema.safeParse(form);
     if (!validation.success) {
       setFieldErrors(getHoldingFieldErrors(validation.error));
-      setError("Please correct the highlighted fields.");
+      setSaveError("Please correct the highlighted fields.");
       return;
     }
     setFieldErrors({});
@@ -802,12 +812,14 @@ function HoldingFormPage({
           body: JSON.stringify(validation.data),
         },
       );
-      setLocation(`/holdings/${result.holding.id}`);
+      setLocation(
+        holdingId ? `/holdings/${result.holding.id}` : "/holdings",
+      );
     } catch (requestError) {
       if (requestError instanceof ApiResponseError && requestError.fieldErrors) {
         setFieldErrors(requestError.fieldErrors);
       }
-      setError(
+      setSaveError(
         requestError instanceof Error
           ? requestError.message
           : "This holding could not be saved.",
@@ -832,21 +844,25 @@ function HoldingFormPage({
       </div>
 
       {isLoading && <p className="holdings-message">Loading form…</p>}
-      {!isLoading && error && (
+      {!isLoading && loadError && (
         <div className="holdings-alert" role="alert">
-          {error}
+          {loadError}
         </div>
       )}
-      {!isLoading && !error && assetClasses.length > 0 && (
+      {!isLoading && saveError && (
+        <div className="holdings-alert" role="alert">
+          {saveError}
+        </div>
+      )}
+      {!isLoading && !loadError && assetClasses.length > 0 && (
         <form className="holding-form" noValidate onSubmit={handleSubmit}>
           <div className="holding-form__grid">
             <label className="form-field" htmlFor="holding-ticker">
-              <span>Ticker</span>
+              <span>Ticker <small>Optional</small></span>
               <input
                 id="holding-ticker"
                 name="ticker"
                 autoComplete="off"
-                required
                 aria-invalid={Boolean(fieldErrors.ticker)}
                 aria-describedby={fieldErrors.ticker ? "ticker-error" : undefined}
                 value={form.ticker}
@@ -856,11 +872,10 @@ function HoldingFormPage({
               <FieldError id="ticker-error" message={fieldErrors.ticker} />
             </label>
             <label className="form-field" htmlFor="holding-name">
-              <span>Name</span>
+              <span>Name <small>Optional</small></span>
               <input
                 id="holding-name"
                 name="name"
-                required
                 aria-invalid={Boolean(fieldErrors.name)}
                 aria-describedby={fieldErrors.name ? "name-error" : undefined}
                 value={form.name}
@@ -897,7 +912,7 @@ function HoldingFormPage({
               />
             </label>
             <label className="form-field" htmlFor="holding-quantity">
-              <span>Quantity</span>
+              <span>Quantity <small>Shares or units</small></span>
               <input
                 id="holding-quantity"
                 name="quantity"
@@ -905,6 +920,8 @@ function HoldingFormPage({
                 min="0.00000001"
                 step="any"
                 required
+                inputMode="decimal"
+                placeholder="e.g. 1.25"
                 aria-invalid={Boolean(fieldErrors.quantity)}
                 aria-describedby={fieldErrors.quantity ? "quantity-error" : undefined}
                 value={form.quantity}
@@ -916,7 +933,7 @@ function HoldingFormPage({
               <FieldError id="quantity-error" message={fieldErrors.quantity} />
             </label>
             <label className="form-field" htmlFor="holding-price">
-              <span>Price per share</span>
+              <span>Price per share (USD)</span>
               <div className="money-input">
                 <span aria-hidden="true">$</span>
                 <input
