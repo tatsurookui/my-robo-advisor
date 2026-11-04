@@ -137,17 +137,17 @@ then it shows **$3,950.00** (10 × 250 + 20 × 72.50).
 
 ## 8. Plan vs. Reality
 
-*(To be completed after the build.)*
+PR #22 completed all 10 planned features with 53 tests passing at that milestone; PR #27 later reported 65 passing tests. PR #26 reverted PRs #23 and #24 to the PR #22 baseline without removing the planned features, and PR #27 restored optional labels and decimal-quantity handling. “Done” describes feature implementation only: production Clerk sign-in and republishing reliability remain unresolved and are not claimed as working.
 
 | Planned feature | Shipped / Changed / Cut | Status (Done/Backlogged) | Learning | What changed and why (one line) |
 |---|---|---|---|---|
-| 1. Sign up and login | | | | |
-| 2. Data model | | | | |
-| 3. CRUD holdings | | | | |
-| 4. Validation | | | | |
-| 5. Stars | | | | |
-| 6. Find things | | | | |
-| 7. Dashboard | | | | |
-| 8. Risk tolerance quiz | | | | |
-| 9. Recommended allocation | | | | |
-| 10. Rebalancing calculator | | | | |
+| 1. Sign up and login | Shipped — Clerk email/password sign-up, login, logout, and protected routes (PR #4). | Done | Passing feature tests does not prove production Clerk sign-in is reliable. | No planned auth flow was cut, but production sign-in reliability remains unresolved. |
+| 2. Data model | Shipped — Reused users and added owner-linked holdings, asset classes, and stars (PR #6). | Done | Enforce ownership in database relationships and server queries, not browser-supplied IDs. | Feature 2 reused the Feature 1 users table to preserve existing identity records. |
+| 3. CRUD holdings | Shipped — User-scoped add, list, detail, edit, and delete flows (PR #8). | Done | Derive the owner ID from the authenticated session for every read and mutation. | All planned CRUD actions shipped with ownership enforced from the signed-in user. |
+| 4. Validation | Changed — Client/server validation shipped; Ticker and Name are optional and fractional quantities are preserved (PR #27). | Done | Keep form, API, and database rules aligned; quantity represents shares or units, not dollars. | Labels became optional and decimal quantities were preserved after Preview use exposed these needs; PR #27 restored them after PR #26 reverted PR #24. |
+| 5. Stars | Shipped — Persisted star/unstar controls and an owner-scoped Starred page (PR #12). | Done | Persist user-specific star state instead of relying on temporary UI state. | Star state is stored per user and shown on the planned Starred page. |
+| 6. Find things | Shipped — Case-insensitive search, asset-class filtering, and three sort options (PR #14). | Done | Combined search, filters, and sorting must remain owner-scoped. | Search, filter, and sort work together; none of the planned controls were cut. |
+| 7. Dashboard | Shipped — Allocation chart and three portfolio summaries; Preview showed $1,070 across five holdings. | Done | Reuse quantity × price calculations so totals and allocations stay consistent. | The planned chart and summary stats shipped, and the Preview confirmed them with five saved holdings. |
+| 8. Risk tolerance quiz | Shipped — Three scored questions, saved profile, and retakes (PR #18). | Done | Test scores at every profile boundary, not only typical answers. | The quiz stores score and profile on the existing users row, as planned. |
+| 9. Recommended allocation | Shipped — Current allocation is compared with the exact risk-profile targets (PR #20). | Done | Validate that target percentages total 100% and keep chart colors consistent. | The app uses the target mixes in Section 2 and handles missing profiles without changing the planned allocation. |
+| 10. Rebalancing calculator | Shipped — Owner-scoped drift and dollar Buy/Sell calculations (PR #22). | Done | Test positive, negative, zero adjustments, and the greater-than-five-point drift threshold. | The calculator uses the planned target-value-minus-current-value formula and does not place trades. |
