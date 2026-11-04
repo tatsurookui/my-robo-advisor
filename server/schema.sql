@@ -42,8 +42,8 @@ CREATE TABLE IF NOT EXISTS assets (
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   asset_class_id SMALLINT NOT NULL
     REFERENCES asset_classes(id) ON DELETE RESTRICT,
-  ticker TEXT CHECK (ticker IS NULL OR length(btrim(ticker)) > 0),
-  name TEXT CHECK (name IS NULL OR length(btrim(name)) > 0),
+  ticker TEXT NOT NULL CHECK (length(btrim(ticker)) > 0),
+  name TEXT NOT NULL CHECK (length(btrim(name)) > 0),
   quantity NUMERIC(20, 8) NOT NULL CHECK (quantity > 0),
   price NUMERIC(20, 8) NOT NULL CHECK (price >= 0),
   notes TEXT,
@@ -51,22 +51,6 @@ CREATE TABLE IF NOT EXISTS assets (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (user_id, id)
 );
-
--- Existing holdings remain unchanged; empty ticker and name values are now
--- allowed so new holdings can omit either or both fields.
-ALTER TABLE assets
-  ALTER COLUMN ticker DROP NOT NULL,
-  ALTER COLUMN name DROP NOT NULL;
-
-ALTER TABLE assets
-  DROP CONSTRAINT IF EXISTS assets_ticker_check,
-  DROP CONSTRAINT IF EXISTS assets_name_check;
-
-ALTER TABLE assets
-  ADD CONSTRAINT assets_ticker_check
-    CHECK (ticker IS NULL OR length(btrim(ticker)) > 0),
-  ADD CONSTRAINT assets_name_check
-    CHECK (name IS NULL OR length(btrim(name)) > 0);
 
 CREATE INDEX IF NOT EXISTS assets_user_created_at_idx
   ON assets (user_id, created_at DESC);

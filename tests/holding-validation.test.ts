@@ -43,7 +43,7 @@ describe("holding validation", () => {
     });
   });
 
-  it("allows optional ticker and name to be blank while validating required fields", () => {
+  it("reports clear messages when required fields are blank", () => {
     const result = holdingInputSchema.safeParse({
       ticker: "  ",
       name: "",
@@ -56,44 +56,12 @@ describe("holding validation", () => {
     if (result.success) return;
 
     expect(getHoldingFieldErrors(result.error)).toEqual({
+      ticker: "Enter a ticker symbol.",
+      name: "Enter a holding name.",
       asset_class_id: "Select an asset class.",
       quantity: "Enter a quantity greater than 0.",
       price: "Enter a price of $0 or more.",
     });
-  });
-
-  it.each([
-    ["", "", null, null],
-    [" BND ", "", "BND", null],
-    ["", " Government bonds ", null, "Government bonds"],
-    [" BND ", " Vanguard Total Bond Market ETF ", "BND", "Vanguard Total Bond Market ETF"],
-  ])(
-    "accepts optional ticker/name pair %j / %j",
-    (ticker, name, expectedTicker, expectedName) => {
-      const result = validateHoldingInput({
-        ...validInput,
-        ticker,
-        name,
-      });
-
-      expect(result).toMatchObject({
-        success: true,
-        input: {
-          ticker: expectedTicker,
-          name: expectedName,
-        },
-      });
-    },
-  );
-
-  it("preserves exact supported quantity strings during validation", () => {
-    for (const quantity of ["1", "10.5", "0.25", "0.0001"]) {
-      const result = validateHoldingInput({ ...validInput, quantity });
-      expect(result).toMatchObject({
-        success: true,
-        input: { quantity },
-      });
-    }
   });
 
   it.each(["0", "0.00000000", "-1", "-0.01", "not-a-number"])(

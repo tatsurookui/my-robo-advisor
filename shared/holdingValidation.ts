@@ -12,17 +12,11 @@ export const holdingFieldNames = [
 export type HoldingFieldName = (typeof holdingFieldNames)[number];
 export type HoldingFieldErrors = Partial<Record<HoldingFieldName, string>>;
 
-const optionalText = z.unknown().transform((value, context) => {
-  if (value === undefined || value === null) return null;
-  if (typeof value !== "string") {
-    context.addIssue({
-      code: "custom",
-      message: "Enter text.",
-    });
-    return z.NEVER;
-  }
-  return value.trim() || null;
-});
+const requiredText = (message: string) =>
+  z.preprocess(
+    (value) => (typeof value === "string" ? value : ""),
+    z.string().trim().min(1, message),
+  );
 
 function fitsPostgresNumeric(value: string) {
   const [whole, fraction = ""] = value.replace(/^-/, "").split(".");
@@ -86,8 +80,8 @@ const notes = z.unknown().optional().transform((value, context) => {
 });
 
 export const holdingInputSchema = z.object({
-  ticker: optionalText,
-  name: optionalText,
+  ticker: requiredText("Enter a ticker symbol."),
+  name: requiredText("Enter a holding name."),
   asset_class_id: assetClassId,
   quantity: decimalValue(
     "Enter a quantity greater than 0.",

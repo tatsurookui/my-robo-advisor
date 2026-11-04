@@ -12,8 +12,8 @@ export interface HoldingRecord {
   id: string;
   asset_class_id: number;
   asset_class_name: string;
-  ticker: string | null;
-  name: string | null;
+  ticker: string;
+  name: string;
   quantity: string;
   price: string;
   notes: string | null;
@@ -23,8 +23,8 @@ export interface HoldingRecord {
 }
 
 export interface HoldingInput {
-  ticker: string | null;
-  name: string | null;
+  ticker: string;
+  name: string;
   assetClassId: number;
   quantity: string;
   price: string;
@@ -61,7 +61,7 @@ const HOLDING_SELECT = `
 
 const HOLDING_SORT_SQL: Record<HoldingSort, string> = {
   "market-value": "a.quantity * a.price DESC",
-  ticker: "LOWER(a.ticker) ASC NULLS LAST, a.ticker ASC NULLS LAST",
+  ticker: "LOWER(a.ticker) ASC, a.ticker ASC",
   newest: "a.created_at DESC",
 };
 
@@ -79,7 +79,7 @@ function buildHoldingListQuery(
     values.push(`%${escapedSearch}%`);
     const parameter = `$${values.length + 1}`;
     conditions.push(
-      `(COALESCE(a.ticker, '') ILIKE ${parameter} ESCAPE '!' OR COALESCE(a.name, '') ILIKE ${parameter} ESCAPE '!')`,
+      `(a.ticker ILIKE ${parameter} ESCAPE '!' OR a.name ILIKE ${parameter} ESCAPE '!')`,
     );
   }
 

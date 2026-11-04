@@ -10,16 +10,6 @@ import {
   type HoldingFieldErrors,
   type HoldingFieldName,
 } from "../../shared/holdingValidation";
-import {
-  formatExactQuantity,
-  formatUsdCents,
-  formatUsdDecimal,
-  multiplyDecimalsToCents,
-} from "../../shared/money";
-import {
-  getHoldingDisplayName,
-  getHoldingSecondaryLabel,
-} from "../../shared/holdingDisplay";
 
 interface AssetClass {
   id: number;
@@ -32,8 +22,8 @@ interface Holding {
   id: string;
   asset_class_id: number;
   asset_class_name: string;
-  ticker: string | null;
-  name: string | null;
+  ticker: string;
+  name: string;
   quantity: string;
   price: string;
   notes: string | null;
@@ -59,8 +49,6 @@ const emptyForm: HoldingFormValues = {
   price: "",
   notes: "",
 };
-
-let pendingHoldingSuccessMessage = "";
 
 interface ApiErrorResponse {
   error?: string;
@@ -165,16 +153,20 @@ function StarToggle({
 }
 
 function formatQuantity(quantity: string) {
-  return formatExactQuantity(quantity);
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 8 }).format(
+    Number(quantity),
+  );
 }
 
 function formatPrice(price: string) {
-  return formatUsdDecimal(price);
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(Number(price));
 }
 
 function formatMarketValue(quantity: string, price: string) {
-  const cents = multiplyDecimalsToCents(quantity, price);
-  return cents === null ? "—" : formatUsdCents(cents);
+  return formatPrice(String(Number(quantity) * Number(price)));
 }
 
 function BrandLink() {
@@ -284,14 +276,6 @@ function HoldingsListPage({ starredOnly = false }: { starredOnly?: boolean }) {
   const [search, setSearch] = useState("");
   const [assetClassId, setAssetClassId] = useState("");
   const [sort, setSort] = useState<HoldingSort>("newest");
-  const [successMessage, setSuccessMessage] = useState("");
-
-  useEffect(() => {
-    if (pendingHoldingSuccessMessage) {
-      setSuccessMessage(pendingHoldingSuccessMessage);
-      pendingHoldingSuccessMessage = "";
-    }
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -379,12 +363,6 @@ function HoldingsListPage({ starredOnly = false }: { starredOnly?: boolean }) {
           </Link>
         )}
       </div>
-
-      {successMessage && (
-        <div className="holdings-success" role="status">
-          {successMessage}
-        </div>
-      )}
 
       <div className="holding-filters" role="search" aria-label="Find holdings">
         <label className="holding-filter">
@@ -525,10 +503,8 @@ function HoldingsListPage({ starredOnly = false }: { starredOnly?: boolean }) {
                       href={`/holdings/${holding.id}`}
                       className="holding-name"
                     >
-                      <strong>{getHoldingDisplayName(holding)}</strong>
-                      {getHoldingSecondaryLabel(holding) && (
-                        <span>{getHoldingSecondaryLabel(holding)}</span>
-                      )}
+                      <strong>{holding.ticker}</strong>
+                      <span>{holding.name}</span>
                     </Link>
                   </td>
                   <td>{holding.asset_class_name}</td>
@@ -560,7 +536,7 @@ function HoldingsListPage({ starredOnly = false }: { starredOnly?: boolean }) {
                     <Link
                       href={`/holdings/${holding.id}`}
                       className="table-action"
-                      aria-label={`View ${getHoldingDisplayName(holding)} details`}
+                      aria-label={`View ${holding.ticker} details`}
                     >
                       View
                     </Link>
@@ -610,11 +586,7 @@ function HoldingDetailPage({ holdingId }: { holdingId: string }) {
 
   async function handleDelete() {
     if (!holding || isDeleting) return;
-    if (
-      !window.confirm(
-        `Are you sure you want to delete ${getHoldingDisplayName(holding)}?`,
-      )
-    ) {
+    if (!window.confirm(`Are you sure you want to delete ${holding.ticker}?`)) {
       return;
     }
 
@@ -660,10 +632,8 @@ function HoldingDetailPage({ holdingId }: { holdingId: string }) {
           <div className="holding-detail__heading">
             <div>
               <div className="eyebrow">HOLDING DETAILS</div>
-              <h1>{getHoldingDisplayName(holding)}</h1>
-              {getHoldingSecondaryLabel(holding) && (
-                <p>{getHoldingSecondaryLabel(holding)}</p>
-              )}
+              <h1>{holding.ticker}</h1>
+              <p>{holding.name}</p>
             </div>
             <div className="holding-detail__actions">
               <StarToggle
@@ -751,15 +721,18 @@ function HoldingFormPage({
         if (holdingResult) {
           const holding = holdingResult.holding;
           setForm({
-            ticker: holding.ticker ?? "",
-            name: holding.name ?? "",
+            ticker: holding.ticker,
+            name: holding.name,
             asset_class_id: String(holding.asset_class_id),
             quantity: holding.quantity,
             price: holding.price,
             notes: holding.notes ?? "",
           });
         } else {
-          setForm(emptyForm);
+          setForm({
+            ...emptyForm,
+            asset_class_id: String(classesResult.assetClasses[0]?.id ?? ""),
+          });
         }
       })
       .catch((requestError: unknown) => {
@@ -821,7 +794,7 @@ function HoldingFormPage({
     setIsSaving(true);
 
     try {
-      await requestJson<{ holding: Holding }>(
+      const result = await requestJson<{ holding: Holding }>(
         holdingId ? `/api/holdings/${holdingId}` : "/api/holdings",
         {
           method: holdingId ? "PUT" : "POST",
@@ -829,10 +802,7 @@ function HoldingFormPage({
           body: JSON.stringify(validation.data),
         },
       );
-      pendingHoldingSuccessMessage = holdingId
-        ? "Holding updated."
-        : "Holding added.";
-      setLocation("/holdings");
+      setLocation(`/holdings/${result.holding.id}`);
     } catch (requestError) {
       if (requestError instanceof ApiResponseError && requestError.fieldErrors) {
         setFieldErrors(requestError.fieldErrors);
@@ -847,10 +817,6 @@ function HoldingFormPage({
   }
 
   const cancelPath = holdingId ? `/holdings/${holdingId}` : "/holdings";
-  const estimatedMarketValueCents = multiplyDecimalsToCents(
-    form.quantity,
-    form.price,
-  );
 
   return (
     <section className="holdings-content">
@@ -874,8 +840,37 @@ function HoldingFormPage({
       {!isLoading && !error && assetClasses.length > 0 && (
         <form className="holding-form" noValidate onSubmit={handleSubmit}>
           <div className="holding-form__grid">
+            <label className="form-field" htmlFor="holding-ticker">
+              <span>Ticker</span>
+              <input
+                id="holding-ticker"
+                name="ticker"
+                autoComplete="off"
+                required
+                aria-invalid={Boolean(fieldErrors.ticker)}
+                aria-describedby={fieldErrors.ticker ? "ticker-error" : undefined}
+                value={form.ticker}
+                onChange={(event) => updateField("ticker", event.target.value)}
+                onBlur={() => validateField("ticker")}
+              />
+              <FieldError id="ticker-error" message={fieldErrors.ticker} />
+            </label>
+            <label className="form-field" htmlFor="holding-name">
+              <span>Name</span>
+              <input
+                id="holding-name"
+                name="name"
+                required
+                aria-invalid={Boolean(fieldErrors.name)}
+                aria-describedby={fieldErrors.name ? "name-error" : undefined}
+                value={form.name}
+                onChange={(event) => updateField("name", event.target.value)}
+                onBlur={() => validateField("name")}
+              />
+              <FieldError id="name-error" message={fieldErrors.name} />
+            </label>
             <label className="form-field" htmlFor="holding-asset-class">
-              <span>Asset class <small>Required</small></span>
+              <span>Asset class</span>
               <select
                 id="holding-asset-class"
                 name="asset_class_id"
@@ -890,7 +885,6 @@ function HoldingFormPage({
                 }
                 onBlur={() => validateField("asset_class_id")}
               >
-                <option value="">Choose an asset class</option>
                 {assetClasses.map((assetClass) => (
                   <option key={assetClass.id} value={assetClass.id}>
                     {assetClass.name}
@@ -903,14 +897,13 @@ function HoldingFormPage({
               />
             </label>
             <label className="form-field" htmlFor="holding-quantity">
-              <span>Quantity <small>Required</small></span>
+              <span>Quantity</span>
               <input
                 id="holding-quantity"
                 name="quantity"
-                type="text"
-                inputMode="decimal"
-                autoComplete="off"
-                placeholder="10"
+                type="number"
+                min="0.00000001"
+                step="any"
                 required
                 aria-invalid={Boolean(fieldErrors.quantity)}
                 aria-describedby={fieldErrors.quantity ? "quantity-error" : undefined}
@@ -923,16 +916,15 @@ function HoldingFormPage({
               <FieldError id="quantity-error" message={fieldErrors.quantity} />
             </label>
             <label className="form-field" htmlFor="holding-price">
-              <span>Price per share (USD) <small>Required</small></span>
+              <span>Price per share</span>
               <div className="money-input">
                 <span aria-hidden="true">$</span>
                 <input
                   id="holding-price"
                   name="price"
-                  type="text"
-                  inputMode="decimal"
-                  autoComplete="off"
-                  placeholder="250.00"
+                  type="number"
+                  min="0"
+                  step="any"
                   required
                   aria-invalid={Boolean(fieldErrors.price)}
                   aria-describedby={fieldErrors.price ? "price-error" : undefined}
@@ -943,48 +935,22 @@ function HoldingFormPage({
               </div>
               <FieldError id="price-error" message={fieldErrors.price} />
             </label>
-            <output
-              className="holding-form__estimate"
-              htmlFor="holding-quantity holding-price"
-              aria-live="polite"
+            <label
+              className="form-field holding-form__notes"
+              htmlFor="holding-notes"
             >
-              <span>Estimated market value</span>
-              <strong>
-                {estimatedMarketValueCents === null
-                  ? "—"
-                  : formatUsdCents(estimatedMarketValueCents)}
-              </strong>
-              <small>Quantity × price per share</small>
-            </output>
-            <label className="form-field" htmlFor="holding-ticker">
-              <span>Ticker <small>Optional</small></span>
-              <input
-                id="holding-ticker"
-                name="ticker"
-                autoComplete="off"
-                placeholder="VTI"
-                aria-invalid={Boolean(fieldErrors.ticker)}
-                aria-describedby={fieldErrors.ticker ? "ticker-error" : undefined}
-                value={form.ticker}
-                onChange={(event) => updateField("ticker", event.target.value)}
-                onBlur={() => validateField("ticker")}
+              <span>Notes <small>Optional</small></span>
+              <textarea
+                id="holding-notes"
+                name="notes"
+                rows={4}
+                aria-invalid={Boolean(fieldErrors.notes)}
+                aria-describedby={fieldErrors.notes ? "notes-error" : undefined}
+                value={form.notes}
+                onChange={(event) => updateField("notes", event.target.value)}
+                onBlur={() => validateField("notes")}
               />
-              <FieldError id="ticker-error" message={fieldErrors.ticker} />
-            </label>
-            <label className="form-field" htmlFor="holding-name">
-              <span>Name <small>Optional</small></span>
-              <input
-                id="holding-name"
-                name="name"
-                autoComplete="off"
-                placeholder="Vanguard Total Stock Market ETF"
-                aria-invalid={Boolean(fieldErrors.name)}
-                aria-describedby={fieldErrors.name ? "name-error" : undefined}
-                value={form.name}
-                onChange={(event) => updateField("name", event.target.value)}
-                onBlur={() => validateField("name")}
-              />
-              <FieldError id="name-error" message={fieldErrors.name} />
+              <FieldError id="notes-error" message={fieldErrors.notes} />
             </label>
           </div>
           <div className="holding-form__actions">

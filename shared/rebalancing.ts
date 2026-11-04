@@ -1,5 +1,4 @@
 import type { DashboardSummary } from "./dashboard";
-import { centsToNumber } from "./money";
 
 export type RebalanceAction = "buy" | "sell" | "none";
 
@@ -11,23 +10,19 @@ export interface RebalancingRow {
   targetPercentage: number;
   driftPercentagePoints: number;
   adjustmentAmount: number;
-  adjustmentAmountCents: string;
   action: RebalanceAction;
   needsAttention: boolean;
 }
 
 export interface RebalancingPlan {
   totalPortfolioValue: number;
-  totalPortfolioValueCents: string;
   holdingCount: number;
   riskProfile: DashboardSummary["riskProfile"];
   rows: RebalancingRow[] | null;
 }
 
-function roundPositiveDivision(numerator: bigint, denominator: bigint) {
-  const quotient = numerator / denominator;
-  const remainder = numerator % denominator;
-  return remainder * 2n >= denominator ? quotient + 1n : quotient;
+function roundCurrency(amount: number) {
+  return Math.round((amount + Number.EPSILON) * 100) / 100;
 }
 
 export function calculateRebalancing(
@@ -38,7 +33,6 @@ export function calculateRebalancing(
   if (!riskProfile || !recommendedAllocations) {
     return {
       totalPortfolioValue: dashboard.totalPortfolioValue,
-      totalPortfolioValueCents: dashboard.totalPortfolioValueCents,
       holdingCount: dashboard.holdingCount,
       riskProfile: null,
       rows: null,
@@ -62,20 +56,11 @@ export function calculateRebalancing(
 
     const driftPercentagePoints =
       current.percentage - target.percentage;
-    const targetBasisPoints = BigInt(Math.round(target.percentage * 100));
-    const targetValueCents = roundPositiveDivision(
-      BigInt(dashboard.totalPortfolioValueCents) * targetBasisPoints,
-      10_000n,
-    );
-    const adjustmentAmountCents =
-      targetValueCents - BigInt(current.marketValueCents);
-    const adjustmentAmount = centsToNumber(adjustmentAmountCents);
+    const targetValue =
+      dashboard.totalPortfolioValue * (target.percentage / 100);
+    const adjustmentAmount = roundCurrency(targetValue - current.marketValue);
     const action: RebalanceAction =
-      adjustmentAmountCents > 0n
-        ? "buy"
-        : adjustmentAmountCents < 0n
-          ? "sell"
-          : "none";
+      adjustmentAmount > 0 ? "buy" : adjustmentAmount < 0 ? "sell" : "none";
 
     return {
       assetClassId: target.assetClassId,
@@ -85,7 +70,6 @@ export function calculateRebalancing(
       targetPercentage: target.percentage,
       driftPercentagePoints,
       adjustmentAmount,
-      adjustmentAmountCents: adjustmentAmountCents.toString(),
       action,
       needsAttention: Math.abs(driftPercentagePoints) > 5,
     };
@@ -93,7 +77,6 @@ export function calculateRebalancing(
 
   return {
     totalPortfolioValue: dashboard.totalPortfolioValue,
-    totalPortfolioValueCents: dashboard.totalPortfolioValueCents,
     holdingCount: dashboard.holdingCount,
     riskProfile,
     rows,
